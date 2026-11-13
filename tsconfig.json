@@ -22,7 +22,8 @@
           "@effect/vitest",
           "effect/http",
           "effect/encoding",
-          "effect/FileSystem"
+          "effect/FileSystem",
+          "effect/PlatformError"
         ]
       }
     ]
