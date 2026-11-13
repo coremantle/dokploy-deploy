@@ -10,8 +10,8 @@
     "#*": "./src/*"
   },
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs",
-    "build:check": "pnpm build && git diff -- dist && test -z \"$(git status --porcelain -- dist)\"",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs && node tools/manifest-schema.ts",
+    "build:check": "pnpm build && git diff -- dist manifest.schema.json && test -z \"$(git status --porcelain -- dist manifest.schema.json)\"",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

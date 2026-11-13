@@ -14,9 +14,13 @@ inputs:
     required: false
     default: deploy/dokploy.yml
   mode:
-    description: "`plan` reads Dokploy and reports the changes; `apply` makes them. In v0 (bootstrap), `plan` is a no-op and `apply` fails without touching Dokploy."
+    description: "`plan` reads the manifest and Dokploy, then reports the environment block and the domains; `apply` makes the changes. In v0, `apply` fails without touching Dokploy."
     required: false
     default: plan
+  environment:
+    description: Key of the manifest's `environments` to deploy, e.g. production or staging.
+    required: false
+    default: production
 
 runs:
   using: composite
@@ -29,6 +33,7 @@ runs:
         DOKPLOY_DEPLOY_API_KEY: ${{ inputs.api-key }}
         DOKPLOY_DEPLOY_MANIFEST: ${{ inputs.manifest }}
         DOKPLOY_DEPLOY_MODE: ${{ inputs.mode }}
+        DOKPLOY_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
         DOKPLOY_DEPLOY_ENTRY: ${{ github.action_path }}/dist/index.mjs
       run: |
         if ! command -v node >/dev/null 2>&1; then

@@ -8,6 +8,7 @@ const validInputs = {
   [inputVariables.apiKey]: 'test-dokploy-api-key',
   [inputVariables.manifest]: 'deploy/dokploy.yml',
   [inputVariables.mode]: 'plan',
+  [inputVariables.environment]: 'production',
 }
 
 function layerWithEnvironment(values: Record<string, string>) {
@@ -17,10 +18,14 @@ function layerWithEnvironment(values: Record<string, string>) {
 }
 
 describe('ActionInputs', () => {
-  effect('should decode the four inputs the composite step passes', () =>
+  effect('should decode the five inputs the composite step passes', () =>
     Effect.gen(function* () {
       // Given: every input set to a valid value
-      const environment = { ...validInputs, [inputVariables.mode]: 'apply' }
+      const environment = {
+        ...validInputs,
+        [inputVariables.mode]: 'apply',
+        [inputVariables.environment]: 'staging',
+      }
 
       // When: reading the inputs
       const inputs = yield* ActionInputs.pipe(
@@ -32,6 +37,7 @@ describe('ActionInputs', () => {
       expect(Redacted.value(inputs.apiKey)).toBe('test-dokploy-api-key')
       expect(inputs.manifest).toBe('deploy/dokploy.yml')
       expect(inputs.mode).toBe('apply')
+      expect(inputs.environment).toBe('staging')
     }),
   )
 
@@ -166,6 +172,24 @@ describe('ActionInputs', () => {
       )
 
       // Then: the action fails before logging the path
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }),
+  )
+
+  effect('should refuse an environment name that is not a manifest key', () =>
+    Effect.gen(function* () {
+      // Given: an environment typed with a capital and a space
+      const environment = {
+        ...validInputs,
+        [inputVariables.environment]: 'Prod env',
+      }
+
+      // When: reading the inputs
+      const outcome = yield* Effect.exit(
+        ActionInputs.pipe(Effect.provide(layerWithEnvironment(environment))),
+      )
+
+      // Then: the action fails before reading the manifest
       expect(Exit.isFailure(outcome)).toBe(true)
     }),
   )

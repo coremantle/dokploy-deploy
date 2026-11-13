@@ -17,7 +17,14 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "allowedUnstableApis": ["@effect/platform-node", "@effect/vitest"]
+        "allowedUnstableApis": [
+          "@effect/platform-node",
+          "@effect/vitest",
+          "effect/http",
+          "effect/encoding",
+          "effect/FileSystem",
+          "effect/PlatformError"
+        ]
       }
     ]
   },

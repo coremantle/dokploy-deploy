@@ -2,6 +2,12 @@ import { Context, Effect, Layer, Match, Schema, pipe } from 'effect'
 
 import type { ActionInputsShape } from '#action-inputs.config.ts'
 import { ActionInputs } from '#action-inputs.config.ts'
+import type {
+  DeploymentPlan,
+  DeploymentPlanError,
+  DeploymentPlannerShape,
+} from '#deployment-planner.ts'
+import { DeploymentPlanner } from '#deployment-planner.ts'
 import { EffectLog, EffectService } from '#effect/index.ts'
 import type { WorkflowCommandsShape } from '#workflow-commands.ts'
 import { WorkflowCommands } from '#workflow-commands.ts'
@@ -18,17 +24,43 @@ export class ApplyUnavailableError extends Schema.TaggedError<ApplyUnavailableEr
   }
 }
 
+export type DeployActionError = ApplyUnavailableError | DeploymentPlanError
+
 export interface DeployActionShape {
-  readonly run: Effect.Effect<void, ApplyUnavailableError>
+  readonly run: Effect.Effect<void, DeployActionError>
 }
 
 interface DeployActionDependencies {
   readonly inputs: ActionInputsShape
   readonly workflowCommands: WorkflowCommandsShape
+  readonly planner: DeploymentPlannerShape
 }
 
-class NoOpDeployAction implements DeployActionShape {
-  readonly run: Effect.Effect<void, ApplyUnavailableError>
+function planAnnotations(plan: DeploymentPlan) {
+  return {
+    environment: plan.environment,
+    project: plan.dokploy.project,
+    dokployEnvironment: plan.dokploy.environment,
+    compose: plan.dokploy.compose,
+    composeId: plan.dokploy.composeId,
+    provider: plan.provider,
+    folder: plan.folder,
+    keys: plan.keys.length,
+  }
+}
+
+function domainLine({
+  host,
+  path,
+  serviceName,
+  port,
+  https,
+}: DeploymentPlan['domains'][number]) {
+  return `${https ? 'https' : 'http'}://${host}${path} -> ${serviceName}:${port}`
+}
+
+class ManifestDeployAction implements DeployActionShape {
+  readonly run: Effect.Effect<void, DeployActionError>
 
   private readonly dependencies: DeployActionDependencies
 
@@ -37,8 +69,8 @@ class NoOpDeployAction implements DeployActionShape {
     this.run = this.runAction()
   }
 
-  static make(dependencies: DeployActionDependencies): NoOpDeployAction {
-    return new NoOpDeployAction(dependencies)
+  static make(dependencies: DeployActionDependencies): ManifestDeployAction {
+    return new ManifestDeployAction(dependencies)
   }
 
   private runAction() {
@@ -54,12 +86,7 @@ class NoOpDeployAction implements DeployActionShape {
   private runMode() {
     return pipe(
       Match.value(this.dependencies.inputs.mode),
-      Match.when('plan', () =>
-        EffectLog.info(
-          'DeployAction plan has nothing to compare yet',
-          this.target(),
-        ),
-      ),
+      Match.when('plan', () => this.plan()),
       Match.when('apply', () =>
         Effect.fail(ApplyUnavailableError.inThisRelease()),
       ),
@@ -68,12 +95,24 @@ class NoOpDeployAction implements DeployActionShape {
     )
   }
 
-  private target() {
-    return {
-      apiHost: this.dependencies.inputs.apiUrl.host,
-      manifest: this.dependencies.inputs.manifest,
-      release: 'no-op bootstrap',
-    }
+  private plan() {
+    return pipe(
+      this.dependencies.planner.plan,
+      Effect.tap((plan) =>
+        EffectLog.info('DeployAction rendered the environment block', {
+          ...planAnnotations(plan),
+          env: plan.env,
+        }),
+      ),
+      Effect.tap(({ environment, domains }) =>
+        EffectLog.info('DeployAction rendered the domains', {
+          environment,
+          domains: domains.map(domainLine),
+        }),
+      ),
+      Effect.asVoid,
+      Effect.withSpan('DeployAction.plan'),
+    )
   }
 }
 
@@ -87,8 +126,9 @@ export class DeployAction extends Context.Service<
       EffectService.all({
         inputs: ActionInputs,
         workflowCommands: WorkflowCommands,
+        planner: DeploymentPlanner,
       }),
-      (dependencies) => NoOpDeployAction.make(dependencies),
+      (dependencies) => ManifestDeployAction.make(dependencies),
     ),
   )
 

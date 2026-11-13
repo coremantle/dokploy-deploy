@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "enum": [
+        1
+      ]
+    },
+    "composeFile": {
+      "type": "string",
+      "pattern": "^(?!\\/)(?!.*(?:^|\\/)\\.\\.(?:\\/|$))[^\\n\\r]+$",
+      "description": "Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys.",
+      "default": "docker-compose.dokploy.yml"
+    },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "pattern": "^(?:\\/[A-Za-z0-9_-]+)+$",
+          "description": "Infisical folder the references point to: `/<project>`, a folder under it, or `/shared`."
+        }
+      },
+      "required": [
+        "folder"
+      ],
+      "additionalProperties": false
+    },
+    "environments": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9-]{0,62}$": {
+          "type": "object",
+          "properties": {
+            "dokploy": {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "type": "string",
+                  "pattern": "^\\S(?:[^\\n\\r]*\\S)?$",
+                  "description": "A Dokploy name, as shown in the dashboard."
+                },
+                "environment": {
+                  "type": "string",
+                  "pattern": "^\\S(?:[^\\n\\r]*\\S)?$",
+                  "description": "A Dokploy name, as shown in the dashboard."
+                },
+                "compose": {
+                  "type": "string",
+                  "pattern": "^\\S(?:[^\\n\\r]*\\S)?$",
+                  "description": "A Dokploy name, as shown in the dashboard."
+                }
+              },
+              "required": [
+                "project",
+                "environment",
+                "compose"
+              ],
+              "additionalProperties": false
+            },
+            "secrets": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "description": "Name of the Dokploy vault provider that reads `secrets.folder` in this environment. Default: `infisical-<project>`, plus `-<environment>` outside production (slugs of the Dokploy names), as babel names it at onboarding."
+                }
+              },
+              "required": [
+                "provider"
+              ],
+              "additionalProperties": false
+            },
+            "domain": {
+              "type": "string",
+              "pattern": "^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$",
+              "description": "Parent domain of the environment's hosts: each host is `<subdomain>.<domain>`."
+            }
+          },
+          "required": [
+            "dokploy",
+            "domain"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "domains": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "object",
+          "properties": {
+            "service": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+              "description": "Service of the compose file the domain routes to."
+            },
+            "subdomain": {
+              "type": "string",
+              "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Container port the domain routes to."
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^\\/\\S*$",
+              "default": "/"
+            },
+            "https": {
+              "type": "boolean",
+              "default": true
+            },
+            "certificateType": {
+              "type": "string",
+              "enum": [
+                "letsencrypt",
+                "none",
+                "custom"
+              ],
+              "default": "letsencrypt"
+            },
+            "allowedMethods": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "GET",
+                    "HEAD",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE",
+                    "OPTIONS"
+                  ]
+                }
+              ],
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "HEAD",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "OPTIONS"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "service",
+            "subdomain",
+            "port"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "description": "Service of the compose file the domain routes to."
+          },
+          "subdomain": {
+            "type": "string",
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Container port the domain routes to."
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^\\/\\S*$",
+            "default": "/"
+          },
+          "https": {
+            "type": "boolean",
+            "default": true
+          },
+          "certificateType": {
+            "type": "string",
+            "enum": [
+              "letsencrypt",
+              "none",
+              "custom"
+            ],
+            "default": "letsencrypt"
+          },
+          "allowedMethods": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "HEAD",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "OPTIONS"
+                ]
+              }
+            ],
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "HEAD",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+                "OPTIONS"
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "service",
+          "subdomain",
+          "port"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "secrets",
+    "environments",
+    "domains"
+  ],
+  "additionalProperties": false,
+  "title": "dokploy-deploy manifest",
+  "description": "Deployment manifest of an application deployed by coremantle/dokploy-deploy."
+}

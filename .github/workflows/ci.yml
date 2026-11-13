@@ -46,7 +46,7 @@ jobs:
       - name: dist/ matches the sources
         run: pnpm build:check
 
-  # Why: proves a caller can `uses:` the action as committed — the bundle, without installing anything — and that a no-op plan exits 0.
+  # Why: proves a caller can `uses:` the action as committed — the bundle, without installing anything — and that a plan against a fake Dokploy exits 0.
   smoke:
     runs-on: ubuntu-latest
     strategy:
@@ -60,9 +60,31 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
+      # Why: the action only calls Dokploy over https; a throwaway self-signed certificate, trusted through NODE_EXTRA_CA_CERTS, keeps the smoke test off any real instance.
+      - name: Start a fake Dokploy
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+            -addext subjectAltName=DNS:localhost \
+            -keyout "$RUNNER_TEMP/fake-dokploy.key" -out "$RUNNER_TEMP/fake-dokploy.crt"
+          nohup node .github/smoke/fake-dokploy.mjs "$RUNNER_TEMP/fake-dokploy.crt" "$RUNNER_TEMP/fake-dokploy.key" 8443 > "$RUNNER_TEMP/fake-dokploy.log" 2>&1 &
+          for _ in $(seq 1 20); do
+            curl -sf --cacert "$RUNNER_TEMP/fake-dokploy.crt" -H 'x-api-key: smoke-test-key-not-a-secret' https://localhost:8443/api/project.all >/dev/null && exit 0
+            sleep 0.5
+          done
+          cat "$RUNNER_TEMP/fake-dokploy.log"
+          exit 1
+
       - name: Plan through the action
         uses: ./
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
         with:
-          api-url: https://dokploy.example.com/api
+          api-url: https://localhost:8443/api
           api-key: smoke-test-key-not-a-secret
+          manifest: .github/smoke/dokploy.yml
           mode: plan
+
+      - name: The plan read the secret names through Dokploy
+        run: |
+          cat "$RUNNER_TEMP/fake-dokploy.log"
+          grep -q 'GET /api/vaultProvider.listSecretNames -> 200' "$RUNNER_TEMP/fake-dokploy.log"
