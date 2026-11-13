@@ -1,0 +1,42 @@
+name: Dokploy deploy
+description: Apply an application's own Dokploy deployment (env references, domains, deploy) with a project-scoped Dokploy key.
+author: coremantle
+
+inputs:
+  api-url:
+    description: Base URL of the Dokploy API, e.g. https://dokploy.example.com/api.
+    required: true
+  api-key:
+    description: Dokploy API key of a member scoped to the project. Pass it from a secret; it is masked in the job log.
+    required: true
+  manifest:
+    description: Path of the deployment manifest, relative to the workspace.
+    required: false
+    default: deploy/dokploy.yml
+  mode:
+    description: "`plan` reads Dokploy and reports the changes; `apply` makes them. In v0 (bootstrap), `plan` is a no-op and `apply` fails without touching Dokploy."
+    required: false
+    default: plan
+
+runs:
+  using: composite
+  steps:
+    - name: Run dokploy-deploy
+      # Why: `sh`, not `bash` — slim job images (alpine) ship no bash, and the step needs nothing beyond POSIX.
+      shell: sh
+      env:
+        DOKPLOY_DEPLOY_API_URL: ${{ inputs.api-url }}
+        DOKPLOY_DEPLOY_API_KEY: ${{ inputs.api-key }}
+        DOKPLOY_DEPLOY_MANIFEST: ${{ inputs.manifest }}
+        DOKPLOY_DEPLOY_MODE: ${{ inputs.mode }}
+        DOKPLOY_DEPLOY_ENTRY: ${{ github.action_path }}/dist/index.mjs
+      run: |
+        if ! command -v node >/dev/null 2>&1; then
+          echo "::error::dokploy-deploy needs Node.js 20 or later on the runner or in the job image"
+          exit 1
+        fi
+        if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)'; then
+          echo "::error::dokploy-deploy needs Node.js 20 or later, found $(node --version)"
+          exit 1
+        fi
+        node "$DOKPLOY_DEPLOY_ENTRY"

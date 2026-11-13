@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./tools/oxlint-config/node.json"],
+  "ignorePatterns": ["**/node_modules/", "dist/", ".claude/worktrees/"],
+  "rules": {
+    "eslint/no-redeclare": "off"
+  },
+  "overrides": [
+    {
+      "files": ["tools/oxlint-plugin/**"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/max-params": "off"
+      }
+    }
+  ]
+}

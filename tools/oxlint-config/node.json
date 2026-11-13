@@ -1,0 +1,7 @@
+{
+  "extends": ["./base.json"],
+  "plugins": ["typescript", "unicorn", "import", "node"],
+  "rules": {
+    "node/no-process-env": "error"
+  }
+}

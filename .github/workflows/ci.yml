@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Why: a new push supersedes a PR's previous run; main and tags always run to the end.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # Why: callers run the committed bundle, never the sources — a stale dist/ would ship code nobody reviewed.
+      - name: dist/ matches the sources
+        run: pnpm build:check
+
+  # Why: proves a caller can `uses:` the action as committed — the bundle, without installing anything — and that a no-op plan exits 0.
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Why: the action promises Node 20 or later to its callers, while the repository itself builds on .nvmrc.
+        node: ['20', '24']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Plan through the action
+        uses: ./
+        with:
+          api-url: https://dokploy.example.com/api
+          api-key: smoke-test-key-not-a-secret
+          mode: plan

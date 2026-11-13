@@ -1,0 +1,3 @@
+# Why: esbuild's install script only checks its platform binary; it is the one dependency allowed to run one.
+onlyBuiltDependencies:
+  - esbuild
