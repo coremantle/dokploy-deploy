@@ -20647,17 +20647,17 @@ function convertDependencies(source, out, context3, targetDialect) {
   const dependencies = {};
   const keys3 = /* @__PURE__ */ new Set([...Object.keys(dependentRequired ?? {}), ...Object.keys(dependentSchemas ?? {})]);
   for (const key5 of keys3) {
-    const required2 = dependentRequired?.[key5];
+    const required3 = dependentRequired?.[key5];
     const dependency = dependentSchemas?.[key5];
-    const omitRequired = targetDialect === "draft-04" && Array.isArray(required2) && required2.length === 0;
+    const omitRequired = targetDialect === "draft-04" && Array.isArray(required3) && required3.length === 0;
     if (dependency === void 0) {
-      if (!omitRequired) assignProperty(dependencies, key5, required2);
-    } else if (required2 === void 0 || omitRequired) {
+      if (!omitRequired) assignProperty(dependencies, key5, required3);
+    } else if (required3 === void 0 || omitRequired) {
       assignProperty(dependencies, key5, context3.schemaAt(dependency, ["dependentSchemas", key5], ["dependencies", key5]));
     } else {
       assignProperty(dependencies, key5, {
         allOf: [context3.schemaAt(dependency, ["dependentSchemas", key5], ["dependencies", key5, "allOf", "0"]), {
-          required: required2
+          required: required3
         }]
       });
     }
@@ -21521,17 +21521,17 @@ function compileJsonSchema(representations, rootPaths, references, options3) {
       type: "object"
     };
     const properties = {};
-    const required2 = [];
+    const required3 = [];
     for (const [index2, property] of propertySignatures.entries()) {
       const propertyPath = [...path, "propertySignatures", index2];
       if (typeof property.name !== "string") {
         throw errorWithPath("Objects property names must be strings", [...propertyPath, "name"]);
       }
       assignProperty(properties, property.name, compileAnnotatedMember(property, propertyPath, dependencies));
-      if (!property.isOptional) required2.push(property.name);
+      if (!property.isOptional) required3.push(property.name);
     }
     if (propertySignatures.length > 0) out.properties = properties;
-    if (required2.length > 0) out.required = required2;
+    if (required3.length > 0) out.required = required3;
     const indexes = indexSignatures.map((signature, index2) => {
       const indexPath = [...path, "indexSignatures", index2];
       const schema2 = recur2(signature.type, [...indexPath, "type"], dependencies);
@@ -33263,7 +33263,12 @@ var inputVariables = {
   apiKey: "DOKPLOY_DEPLOY_API_KEY",
   manifest: "DOKPLOY_DEPLOY_MANIFEST",
   mode: "DOKPLOY_DEPLOY_MODE",
-  environment: "DOKPLOY_DEPLOY_ENVIRONMENT"
+  environment: "DOKPLOY_DEPLOY_ENVIRONMENT",
+  token: "DOKPLOY_DEPLOY_TOKEN",
+  prComment: "DOKPLOY_DEPLOY_PR_COMMENT",
+  forgeApiUrl: "DOKPLOY_DEPLOY_FORGE_API_URL",
+  repository: "DOKPLOY_DEPLOY_REPOSITORY",
+  pullRequest: "DOKPLOY_DEPLOY_PULL_REQUEST"
 };
 var ManifestPath = Schema_exports.Trim.check(
   Schema_exports.isPattern(/^[^\p{Cc}]+$/u, {
@@ -33281,6 +33286,35 @@ var HttpsUrl = Schema_exports.URLFromString.check(
     message: "the Dokploy API is only called over https"
   })
 );
+var ForgeToken = Schema_exports.Trim.check(
+  Schema_exports.isPattern(/^\S+$/u, {
+    message: "a token is one word, without spaces or line breaks"
+  })
+);
+var PrComment = Schema_exports.Trim.check(
+  Schema_exports.isPattern(/^(?:true|false)$/u, {
+    message: "pr-comment is true or false"
+  })
+);
+var Repository = Schema_exports.Trim.check(
+  Schema_exports.isPattern(/^[\w.-]+\/[\w.-]+$/u, {
+    message: "a repository is owner/name"
+  })
+);
+var PullRequestNumber = Schema_exports.NumberFromString.check(
+  Schema_exports.isInt(),
+  Schema_exports.isGreaterThan(0)
+);
+var Blank = Schema_exports.Trim.check(Schema_exports.isMaxLength(0));
+function optionalInput({
+  schema: schema2,
+  name
+}) {
+  return Config_exports.schema(Blank, name).pipe(
+    Config_exports.map(() => Option_exports.none()),
+    Config_exports.orElse(() => Config_exports.option(Config_exports.schema(schema2, name)))
+  );
+}
 var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokploy-deploy/ActionInputs") {
   static layer = Layer_exports.effect(
     _ActionInputs,
@@ -33292,7 +33326,29 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
       ),
       manifest: Config_exports.schema(ManifestPath, inputVariables.manifest),
       mode: Config_exports.schema(DeployMode, inputVariables.mode),
-      environment: Config_exports.schema(EnvironmentName2, inputVariables.environment)
+      environment: Config_exports.schema(EnvironmentName2, inputVariables.environment),
+      token: optionalInput({
+        schema: Schema_exports.RedactedFromValue(ForgeToken),
+        name: inputVariables.token
+      }),
+      prComment: Config_exports.schema(PrComment, inputVariables.prComment).pipe(
+        Config_exports.withDefault("true"),
+        Config_exports.map((value5) => value5 === "true")
+      ),
+      forge: Config_exports.all({
+        apiUrl: optionalInput({
+          schema: Schema_exports.URLFromString,
+          name: inputVariables.forgeApiUrl
+        }),
+        repository: optionalInput({
+          schema: Repository,
+          name: inputVariables.repository
+        }),
+        pullRequest: optionalInput({
+          schema: PullRequestNumber,
+          name: inputVariables.pullRequest
+        })
+      })
     })
   );
   static buildTestService = (shape = {}) => _ActionInputs.of({
@@ -33301,6 +33357,13 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
     manifest: "deploy/dokploy.yml",
     mode: "plan",
     environment: "production",
+    token: Option_exports.none(),
+    prComment: true,
+    forge: {
+      apiUrl: Option_exports.none(),
+      repository: Option_exports.none(),
+      pullRequest: Option_exports.none()
+    },
     ...shape
   });
   static testLayer = Layer_exports.succeed(
@@ -33309,6 +33372,87 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
   );
   static buildTestLayer = (shape) => Layer_exports.succeed(_ActionInputs, _ActionInputs.buildTestService(shape));
 };
+
+// src/domains/domain-diff.ts
+var comparedFields = [
+  "serviceName",
+  "port",
+  "https",
+  "certificateType"
+];
+function routeOf({
+  host,
+  path
+}) {
+  return `${host}${path ?? "/"}`;
+}
+function domainLine({
+  https,
+  host,
+  path,
+  serviceName,
+  port
+}) {
+  return `${https ? "https" : "http"}://${routeOf({ host, path })} -> ${serviceName ?? "?"}:${port ?? "?"}`;
+}
+function domainSettings(domain) {
+  const { host, path, port, serviceName, https, certificateType } = domain;
+  return { host, path, port, serviceName, https, certificateType };
+}
+function changedFields({
+  desired,
+  current
+}) {
+  return Array_exports.filter(
+    comparedFields,
+    (field) => desired[field] !== current[field]
+  );
+}
+function diffDomains({
+  current,
+  desired
+}) {
+  const matches = Array_exports.map(desired, (domain) => ({
+    domain,
+    match: Array_exports.findFirst(
+      current,
+      (candidate) => routeOf(candidate) === routeOf(domain)
+    )
+  }));
+  const matchedIds = new Set(
+    Array_exports.flatMap(
+      matches,
+      ({ match: match8 }) => Option_exports.isSome(match8) ? [match8.value.domainId] : []
+    )
+  );
+  const compared = Array_exports.flatMap(
+    matches,
+    ({ domain, match: match8 }) => Option_exports.isSome(match8) ? [
+      {
+        domainId: match8.value.domainId,
+        desired: domain,
+        fields: changedFields({ desired: domain, current: match8.value })
+      }
+    ] : []
+  );
+  return {
+    create: pipe(
+      matches,
+      Array_exports.filter(({ match: match8 }) => Option_exports.isNone(match8)),
+      Array_exports.map(({ domain }) => domain)
+    ),
+    update: Array_exports.filter(compared, ({ fields }) => fields.length > 0),
+    delete: Array_exports.filter(current, ({ domainId }) => !matchedIds.has(domainId)),
+    unchanged: pipe(
+      compared,
+      Array_exports.filter(({ fields }) => fields.length === 0),
+      Array_exports.map(({ desired: domain }) => domain)
+    )
+  };
+}
+function hasDomainChanges(diff) {
+  return diff.create.length > 0 || diff.update.length > 0 || diff.delete.length > 0;
+}
 
 // src/domains/desired-domains.ts
 var UnknownComposeServiceError = class _UnknownComposeServiceError extends Schema_exports.TaggedError()(
@@ -33341,6 +33485,24 @@ var DuplicateDomainError = class _DuplicateDomainError extends Schema_exports.Ta
     });
   }
 };
+var UnsupportedAllowedMethodsError = class _UnsupportedAllowedMethodsError extends Schema_exports.TaggedError()(
+  "UnsupportedAllowedMethodsError",
+  { routes: Schema_exports.Array(Schema_exports.String), message: Schema_exports.String }
+) {
+  static forRoutes(routes) {
+    return new _UnsupportedAllowedMethodsError({
+      routes,
+      message: `domains[].allowedMethods is set on ${routes.join(", ")}, but Dokploy's domain API has no such setting: apply cannot enforce it, so it changed nothing; remove allowedMethods from the manifest`
+    });
+  }
+};
+function routesWithAllowedMethods(domains) {
+  return pipe(
+    domains,
+    Array_exports.filter(({ allowedMethods }) => allowedMethods !== void 0),
+    Array_exports.map(routeOf)
+  );
+}
 function desiredDomain({
   domain,
   parentDomain
@@ -33352,9 +33514,6 @@ function desiredDomain({
     ...routing,
     ...allowedMethods === void 0 ? {} : { allowedMethods }
   };
-}
-function routeOf({ host, path }) {
-  return `${host}${path}`;
 }
 function duplicatedRoutes(domains) {
   const routes = Array_exports.map(domains, routeOf);
@@ -33453,6 +33612,18 @@ var VaultProvider = Schema_exports.Struct({
   config: Schema_exports.Struct({
     secretPath: Schema_exports.optionalKey(Schema_exports.NullOr(Schema_exports.String))
   })
+});
+var DokployComposeEnv = Schema_exports.Struct({
+  env: Schema_exports.NullOr(Schema_exports.String)
+});
+var DokployDomain = Schema_exports.Struct({
+  domainId: Schema_exports.String,
+  host: Schema_exports.String,
+  path: Schema_exports.NullOr(Schema_exports.String),
+  port: Schema_exports.NullOr(Schema_exports.Int),
+  serviceName: Schema_exports.NullOr(Schema_exports.String),
+  https: Schema_exports.Boolean,
+  certificateType: Schema_exports.String
 });
 var DokployErrorBody = Schema_exports.Struct({
   message: Schema_exports.optionalKey(Schema_exports.String)
@@ -33578,14 +33749,113 @@ var HttpDokployClient = class _HttpDokployClient {
       })
     );
   }
+  composeEnv(composeId) {
+    return pipe(
+      this.query({
+        endpoint: "compose.one",
+        schema: DokployComposeEnv,
+        params: { composeId }
+      }),
+      Effect_exports.map(({ env }) => env ?? ""),
+      Effect_exports.withSpan("DokployClient.composeEnv", {
+        attributes: { composeId }
+      })
+    );
+  }
+  composeDomains(composeId) {
+    return pipe(
+      this.query({
+        endpoint: "domain.byComposeId",
+        schema: Schema_exports.Array(DokployDomain),
+        params: { composeId }
+      }),
+      Effect_exports.withSpan("DokployClient.composeDomains", {
+        attributes: { composeId }
+      })
+    );
+  }
+  saveEnvironment({
+    composeId,
+    env
+  }) {
+    return pipe(
+      this.mutate({
+        endpoint: "compose.saveEnvironment",
+        body: { composeId, env }
+      }),
+      Effect_exports.withSpan("DokployClient.saveEnvironment", {
+        attributes: { composeId }
+      })
+    );
+  }
+  createDomain(domain) {
+    return pipe(
+      this.mutate({
+        endpoint: "domain.create",
+        body: { ...domain, domainType: "compose" }
+      }),
+      Effect_exports.withSpan("DokployClient.createDomain", {
+        attributes: { host: domain.host, path: domain.path }
+      })
+    );
+  }
+  updateDomain(domain) {
+    return pipe(
+      this.mutate({
+        endpoint: "domain.update",
+        body: { ...domain, domainType: "compose" }
+      }),
+      Effect_exports.withSpan("DokployClient.updateDomain", {
+        attributes: { domainId: domain.domainId, host: domain.host }
+      })
+    );
+  }
+  deleteDomain(domainId) {
+    return pipe(
+      this.mutate({ endpoint: "domain.delete", body: { domainId } }),
+      Effect_exports.withSpan("DokployClient.deleteDomain", {
+        attributes: { domainId }
+      })
+    );
+  }
   query({
     endpoint,
     schema: schema2,
     params: params2 = {}
   }) {
+    return pipe(
+      this.send({
+        endpoint,
+        schema: schema2,
+        request: pipe(
+          HttpClientRequest_exports.get(this.endpointUrl(endpoint)),
+          HttpClientRequest_exports.setUrlParams(params2)
+        )
+      }),
+      Effect_exports.withSpan("DokployClient.query", { attributes: { endpoint } })
+    );
+  }
+  mutate({ endpoint, body }) {
+    return pipe(
+      this.send({
+        endpoint,
+        schema: Schema_exports.Unknown,
+        request: pipe(
+          HttpClientRequest_exports.post(this.endpointUrl(endpoint)),
+          HttpClientRequest_exports.bodyText(JSON.stringify(body), "application/json")
+        )
+      }),
+      Effect_exports.asVoid,
+      Effect_exports.withSpan("DokployClient.mutate", { attributes: { endpoint } })
+    );
+  }
+  send({
+    endpoint,
+    schema: schema2,
+    request: bareRequest
+  }) {
     const request3 = pipe(
-      HttpClientRequest_exports.get(this.endpointUrl(endpoint)),
-      HttpClientRequest_exports.setUrlParams(params2),
+      bareRequest,
       HttpClientRequest_exports.acceptJson,
       HttpClientRequest_exports.setHeader(
         "x-api-key",
@@ -33608,7 +33878,7 @@ var HttpDokployClient = class _HttpDokployClient {
         duration: `${requestTimeoutSeconds} seconds`,
         orElse: () => Effect_exports.fail(DokployRequestError.timedOut(endpoint))
       }),
-      Effect_exports.withSpan("DokployClient.query", { attributes: { endpoint } })
+      Effect_exports.withSpan("DokployClient.send", { attributes: { endpoint } })
     );
   }
   endpointUrl(endpoint) {
@@ -33669,6 +33939,12 @@ var DokployClient = class _DokployClient extends Context_exports.Service()("dokp
     projects: Effect_exports.succeed([]),
     vaultProviders: Effect_exports.succeed([]),
     listSecretNames: () => Effect_exports.succeed([]),
+    composeEnv: () => Effect_exports.succeed(""),
+    composeDomains: () => Effect_exports.succeed([]),
+    saveEnvironment: () => Effect_exports.void,
+    createDomain: () => Effect_exports.void,
+    updateDomain: () => Effect_exports.void,
+    deleteDomain: () => Effect_exports.void,
     ...shape
   });
   static testLayer = Layer_exports.succeed(
@@ -33676,6 +33952,145 @@ var DokployClient = class _DokployClient extends Context_exports.Service()("dokp
     _DokployClient.buildTestService()
   );
   static buildTestLayer = (shape) => Layer_exports.succeed(_DokployClient, _DokployClient.buildTestService(shape));
+};
+
+// src/deployment-applier.ts
+var DokployDeploymentApplier = class _DokployDeploymentApplier {
+  dependencies;
+  constructor(dependencies) {
+    this.dependencies = dependencies;
+  }
+  static make(dependencies) {
+    return new _DokployDeploymentApplier(dependencies);
+  }
+  apply(plan) {
+    const { domains } = plan.changes;
+    return pipe(
+      Effect_exports.succeed(plan.unsupported),
+      Effect_exports.filterOrFail(
+        (routes) => routes.length === 0,
+        (routes) => UnsupportedAllowedMethodsError.forRoutes(routes)
+      ),
+      Effect_exports.andThen(() => this.saveEnvironment(plan)),
+      Effect_exports.andThen(
+        () => Effect_exports.forEach(domains.update, (update3) => this.updateDomain(update3), {
+          discard: true
+        })
+      ),
+      Effect_exports.andThen(
+        () => Effect_exports.forEach(
+          domains.create,
+          (domain) => this.createDomain({ domain, composeId: plan.dokploy.composeId }),
+          { discard: true }
+        )
+      ),
+      // Why: deletions last — a deleted route is never a desired one, and a failed create must not leave the compose without its old route.
+      Effect_exports.andThen(
+        () => Effect_exports.forEach(domains.delete, (domain) => this.deleteDomain(domain), {
+          discard: true
+        })
+      ),
+      Effect_exports.as({
+        env: plan.changes.env.drift,
+        created: domains.create.length,
+        updated: domains.update.length,
+        deleted: domains.delete.length
+      }),
+      Effect_exports.withSpan("DeploymentApplier.apply", {
+        attributes: { composeId: plan.dokploy.composeId }
+      })
+    );
+  }
+  saveEnvironment({ changes, dokploy, env }) {
+    if (!changes.env.drift) {
+      return Effect_exports.void.pipe(
+        Effect_exports.withSpan("DeploymentApplier.saveEnvironment")
+      );
+    }
+    return pipe(
+      this.dependencies.dokploy.saveEnvironment({
+        env,
+        composeId: dokploy.composeId
+      }),
+      Effect_exports.tap(
+        () => effect_log_exports.info("DeploymentApplier saved the environment block", {
+          compose: dokploy.compose,
+          added: changes.env.added,
+          changed: changes.env.changed,
+          removed: changes.env.removed
+        })
+      ),
+      Effect_exports.withSpan("DeploymentApplier.saveEnvironment")
+    );
+  }
+  deleteDomain(domain) {
+    return pipe(
+      this.dependencies.dokploy.deleteDomain(domain.domainId),
+      Effect_exports.tap(
+        () => effect_log_exports.info("DeploymentApplier deleted a domain", {
+          route: routeOf(domain)
+        })
+      ),
+      Effect_exports.withSpan("DeploymentApplier.deleteDomain", {
+        attributes: { domainId: domain.domainId }
+      })
+    );
+  }
+  updateDomain({ domainId, desired, fields }) {
+    return pipe(
+      this.dependencies.dokploy.updateDomain({
+        domainId,
+        ...domainSettings(desired)
+      }),
+      Effect_exports.tap(
+        () => effect_log_exports.info("DeploymentApplier updated a domain", {
+          fields,
+          route: routeOf(desired)
+        })
+      ),
+      Effect_exports.withSpan("DeploymentApplier.updateDomain", {
+        attributes: { domainId }
+      })
+    );
+  }
+  createDomain({
+    domain,
+    composeId
+  }) {
+    return pipe(
+      this.dependencies.dokploy.createDomain({
+        composeId,
+        ...domainSettings(domain)
+      }),
+      Effect_exports.tap(
+        () => effect_log_exports.info("DeploymentApplier created a domain", {
+          route: routeOf(domain),
+          service: `${domain.serviceName}:${domain.port}`
+        })
+      ),
+      Effect_exports.withSpan("DeploymentApplier.createDomain", {
+        attributes: { route: routeOf(domain) }
+      })
+    );
+  }
+};
+var DeploymentApplier = class _DeploymentApplier extends Context_exports.Service()("dokploy-deploy/DeploymentApplier") {
+  static layer = Layer_exports.effect(
+    _DeploymentApplier,
+    Effect_exports.map(
+      effect_service_exports.all({ dokploy: DokployClient }),
+      (dependencies) => DokployDeploymentApplier.make(dependencies)
+    )
+  );
+  static buildTestService = (shape = {}) => _DeploymentApplier.of({
+    apply: () => Effect_exports.succeed({ env: false, created: 0, updated: 0, deleted: 0 }),
+    ...shape
+  });
+  static testLayer = Layer_exports.succeed(
+    _DeploymentApplier,
+    _DeploymentApplier.buildTestService()
+  );
+  static buildTestLayer = (shape) => Layer_exports.succeed(_DeploymentApplier, _DeploymentApplier.buildTestService(shape));
 };
 
 // src/dokploy/dokploy-target.ts
@@ -33914,10 +34329,10 @@ function renderEnvironment({
   keys: keys3,
   ...source
 }) {
-  const sortedKeys = pipe(keys3, Array_exports.dedupe, Array_exports.sort(Order_exports.String));
-  const invalidKeys = Array_exports.filter(sortedKeys, (key5) => !dotenvKey.test(key5));
+  const sortedKeys2 = pipe(keys3, Array_exports.dedupe, Array_exports.sort(Order_exports.String));
+  const invalidKeys = Array_exports.filter(sortedKeys2, (key5) => !dotenvKey.test(key5));
   return pipe(
-    Effect_exports.succeed(sortedKeys),
+    Effect_exports.succeed(sortedKeys2),
     Effect_exports.filterOrFail(
       Array_exports.isReadonlyArrayNonEmpty,
       () => NoSecretKeysError.forFolder(source)
@@ -33955,6 +34370,75 @@ function checkComposeVariables({
       attributes: { compose: compose4 }
     })
   );
+}
+
+// src/env/env-diff.ts
+var assignment = /^(?:export\s+)?([A-Za-z_][\w.-]*)\s*=(.*)$/u;
+var quotes = /* @__PURE__ */ new Set(['"', "'", "`"]);
+function closes({
+  text: text2,
+  quote: quote2
+}) {
+  return text2.includes(quote2);
+}
+function appendTo({
+  state,
+  key: key5,
+  line
+}) {
+  const last2 = state.entries.at(-1);
+  const previous = last2?.[0] === key5 ? last2[1] : "";
+  const entry = [key5, `${previous}
+${line}`];
+  return [...state.entries.slice(0, -1), entry];
+}
+function readLine(state, line) {
+  if (state.open !== void 0) {
+    const { key: key6, quote: quote3 } = state.open;
+    return {
+      entries: appendTo({ state, key: key6, line }),
+      open: closes({ quote: quote3, text: line }) ? void 0 : state.open
+    };
+  }
+  const trimmed = line.trim();
+  const match8 = assignment.exec(trimmed);
+  if (trimmed.startsWith("#") || match8 === null) return state;
+  const [, key5 = "", rawValue = ""] = match8;
+  const value5 = rawValue.trim();
+  const quote2 = value5.charAt(0);
+  const opens = quotes.has(quote2) && !(value5.length > 1 && closes({ quote: quote2, text: value5.slice(1) }));
+  const entry = [key5, value5];
+  return {
+    entries: [...state.entries, entry],
+    open: opens ? { key: key5, quote: quote2 } : void 0
+  };
+}
+function envEntries(env) {
+  const initial = { entries: [], open: void 0 };
+  return new Map(Array_exports.reduce(env.split(/\r?\n/u), initial, readLine).entries);
+}
+function sortedKeys(entries3, keep) {
+  return pipe(
+    Array_exports.fromIterable(entries3.keys()),
+    Array_exports.filter(keep),
+    Array_exports.sort(Order_exports.String)
+  );
+}
+function diffEnv({
+  current,
+  desired
+}) {
+  const currentEntries = envEntries(current);
+  const desiredEntries = envEntries(desired);
+  return {
+    drift: current !== desired,
+    added: sortedKeys(desiredEntries, (key5) => !currentEntries.has(key5)),
+    removed: sortedKeys(currentEntries, (key5) => !desiredEntries.has(key5)),
+    changed: sortedKeys(
+      desiredEntries,
+      (key5) => currentEntries.has(key5) && currentEntries.get(key5) !== desiredEntries.get(key5)
+    )
+  };
 }
 
 // node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/encoding/Yaml.js
@@ -34843,16 +35327,47 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
     const { folder } = manifest.secrets;
     return pipe(
       renderEnvironment({ provider, folder, keys: keys3 }),
-      Effect_exports.map((env) => ({
+      Effect_exports.flatMap(
+        (env) => Effect_exports.all({
+          env: Effect_exports.succeed(env),
+          changes: this.changesAgainst({ target, env, domains })
+        })
+      ),
+      Effect_exports.map(({ env, changes }) => ({
         provider,
         folder,
         keys: keys3,
         env,
         domains,
+        changes,
+        unsupported: routesWithAllowedMethods(domains),
         environment: this.dependencies.inputs.environment,
         dokploy: { ...environment.dokploy, ...target }
       })),
       Effect_exports.withSpan("DeploymentPlanner.renderPlan")
+    );
+  }
+  changesAgainst({
+    target,
+    env,
+    domains
+  }) {
+    const { dokploy } = this.dependencies;
+    return pipe(
+      Effect_exports.all(
+        {
+          currentEnv: dokploy.composeEnv(target.composeId),
+          currentDomains: dokploy.composeDomains(target.composeId)
+        },
+        { concurrency: "unbounded" }
+      ),
+      Effect_exports.map(({ currentEnv, currentDomains }) => ({
+        env: diffEnv({ current: currentEnv, desired: env }),
+        domains: diffDomains({ current: currentDomains, desired: domains })
+      })),
+      Effect_exports.withSpan("DeploymentPlanner.changesAgainst", {
+        attributes: { composeId: target.composeId }
+      })
     );
   }
   resolveTarget(names) {
@@ -34916,7 +35431,12 @@ var DeploymentPlanner = class _DeploymentPlanner extends Context_exports.Service
       folder: "/demo",
       keys: ["MESSAGE"],
       env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
-      domains: []
+      domains: [],
+      changes: {
+        env: { drift: false, added: [], removed: [], changed: [] },
+        domains: { create: [], update: [], delete: [], unchanged: [] }
+      },
+      unsupported: []
     }),
     ...shape
   });
@@ -34925,6 +35445,429 @@ var DeploymentPlanner = class _DeploymentPlanner extends Context_exports.Service
     _DeploymentPlanner.buildTestService()
   );
   static buildTestLayer = (shape) => Layer_exports.succeed(_DeploymentPlanner, _DeploymentPlanner.buildTestService(shape));
+};
+
+// src/plan-report.ts
+function planMarker({
+  environment,
+  dokploy
+}) {
+  return `<!-- dokploy-deploy:plan:${environment}:${dokploy.composeId.replaceAll(/[^\w-]/gu, "")} -->`;
+}
+function cell(text2) {
+  return `\`${text2.replaceAll("`", "'").replaceAll("|", "\\|").replaceAll(/[\r\n]/gu, " ")}\``;
+}
+function domainCells(domain) {
+  const url = `${domain.https ? "https" : "http"}://${routeOf(domain)}`;
+  const service3 = `${domain.serviceName ?? "?"}:${domain.port ?? "?"}`;
+  return `${cell(url)} | ${cell(service3)}`;
+}
+function headline(plan) {
+  if (plan.unsupported.length > 0) return "`apply` would refuse this manifest.";
+  return hasChanges(plan) ? "`apply` would make the changes below." : "`apply` would change nothing.";
+}
+function hasChanges({ changes }) {
+  return changes.env.drift || hasDomainChanges(changes.domains);
+}
+function envSection({ changes: { env } }) {
+  const rows = [
+    ...Array_exports.map(env.added, (key5) => `| add | ${cell(key5)} |`),
+    ...Array_exports.map(env.changed, (key5) => `| change | ${cell(key5)} |`),
+    ...Array_exports.map(env.removed, (key5) => `| remove | ${cell(key5)} |`)
+  ];
+  if (!env.drift) return ["#### Environment", "", "No change."];
+  if (rows.length === 0) {
+    return [
+      "#### Environment",
+      "",
+      "Same keys and references; the block is rewritten to its canonical form."
+    ];
+  }
+  return ["#### Environment", "", "| Change | Key |", "| --- | --- |", ...rows];
+}
+function domainsSection({ changes: { domains } }) {
+  const rows = [
+    ...Array_exports.map(
+      domains.create,
+      (domain) => `| create | ${domainCells(domain)} |`
+    ),
+    ...Array_exports.map(
+      domains.update,
+      ({ desired, fields }) => `| update (${fields.join(", ")}) | ${domainCells(desired)} |`
+    ),
+    ...Array_exports.map(
+      domains.delete,
+      (domain) => `| delete | ${domainCells(domain)} |`
+    )
+  ];
+  const unchanged = domains.unchanged.length === 0 ? [] : ["", `${domains.unchanged.length} domain(s) unchanged.`];
+  if (rows.length === 0) return ["#### Domains", "", "No change.", ...unchanged];
+  return [
+    "#### Domains",
+    "",
+    "| Change | Route | Service |",
+    "| --- | --- | --- |",
+    ...rows,
+    ...unchanged
+  ];
+}
+function unsupportedSection({ unsupported: unsupported3 }) {
+  if (unsupported3.length === 0) return [];
+  return [
+    "",
+    `> [!WARNING]`,
+    `> \`allowedMethods\` is set on ${Array_exports.map(unsupported3, cell).join(", ")}: Dokploy's domain API has no such setting, so \`apply\` will refuse this manifest.`
+  ];
+}
+function renderPlanReport(plan) {
+  const { environment, dokploy } = plan;
+  return [
+    planMarker(plan),
+    `### Dokploy plan: \`${environment}\``,
+    "",
+    `Compose ${cell(dokploy.compose)} of project ${cell(dokploy.project)}, environment ${cell(dokploy.environment)}. ${headline(plan)}`,
+    "",
+    ...envSection(plan),
+    "",
+    ...domainsSection(plan),
+    ...unsupportedSection(plan),
+    ""
+  ].join("\n");
+}
+
+// src/pull-request-comments.ts
+var requestTimeoutSeconds2 = 30;
+var commentsPerPage = 50;
+var maxCommentPages = 20;
+var IssueComment = Schema_exports.Struct({
+  id: Schema_exports.Int,
+  body: Schema_exports.optionalKey(Schema_exports.NullOr(Schema_exports.String))
+});
+var ForgeErrorBody = Schema_exports.Struct({
+  message: Schema_exports.optionalKey(Schema_exports.String)
+});
+var PullRequestCommentError = class _PullRequestCommentError extends Schema_exports.TaggedError()(
+  "PullRequestCommentError",
+  {
+    endpoint: Schema_exports.String,
+    status: Schema_exports.optionalKey(Schema_exports.Int),
+    message: Schema_exports.String
+  }
+) {
+  static insecure({ origin }) {
+    return new _PullRequestCommentError({
+      endpoint: "none",
+      message: `the forge API ${origin} is not https: the token is never sent over it; set pr-comment: false`
+    });
+  }
+  static missing(input) {
+    return new _PullRequestCommentError({
+      endpoint: "none",
+      message: `pr-comment needs ${input} to comment on the pull request: set it, or set pr-comment: false`
+    });
+  }
+  static fromStatus({
+    endpoint,
+    status,
+    forgeMessage
+  }) {
+    const hint = status === 401 || status === 403 || status === 404 ? "; the token needs write access to the pull request (GitHub: permissions pull-requests: write; fork pull requests get a read-only token, set pr-comment: false there)" : "";
+    return new _PullRequestCommentError({
+      endpoint,
+      status,
+      message: `the forge answered ${status} on ${endpoint}${Option_exports.match(forgeMessage, { onNone: () => "", onSome: (message) => `: ${message}` })}${hint}`
+    });
+  }
+  static failed({
+    endpoint,
+    reason
+  }) {
+    return new _PullRequestCommentError({
+      endpoint,
+      message: `the pull request comment failed on ${endpoint}: ${reason}`
+    });
+  }
+};
+function required2({
+  value: value5,
+  input
+}) {
+  return pipe(
+    value5,
+    Effect_exports.fromOption(() => PullRequestCommentError.missing(input)),
+    Effect_exports.withSpan("PullRequestComments.required", { attributes: { input } })
+  );
+}
+var ForgePullRequestComments = class _ForgePullRequestComments {
+  dependencies;
+  constructor(dependencies) {
+    this.dependencies = dependencies;
+  }
+  static make(dependencies) {
+    return new _ForgePullRequestComments(dependencies);
+  }
+  upsert(comment) {
+    return pipe(
+      this.target(),
+      Effect_exports.flatMap((target) => this.upsertOn({ target, comment })),
+      Effect_exports.withSpan("PullRequestComments.upsert")
+    );
+  }
+  upsertOn({
+    target,
+    comment
+  }) {
+    return pipe(
+      this.findMarked({ target, marker: comment.marker, page: 1 }),
+      Effect_exports.flatMap(
+        Option_exports.match({
+          onNone: () => this.create({ target, body: comment.body }),
+          onSome: ({ id: id2 }) => this.updateOrCreate({ target, id: id2, body: comment.body })
+        })
+      ),
+      Effect_exports.withSpan("PullRequestComments.upsertOn")
+    );
+  }
+  target() {
+    const { forge, token } = this.dependencies;
+    return pipe(
+      Effect_exports.all({
+        apiUrl: required2({ value: forge.apiUrl, input: "the forge API URL" }),
+        repository: required2({
+          value: forge.repository,
+          input: "the repository"
+        }),
+        pullRequest: required2({
+          value: forge.pullRequest,
+          input: "the pull request number"
+        }),
+        token: required2({ value: token, input: "the token input" })
+      }),
+      Effect_exports.filterOrFail(
+        ({ apiUrl }) => apiUrl.protocol === "https:",
+        ({ apiUrl }) => PullRequestCommentError.insecure(apiUrl)
+      ),
+      Effect_exports.map((target) => target),
+      Effect_exports.withSpan("PullRequestComments.target")
+    );
+  }
+  findMarked({
+    target,
+    marker,
+    page,
+    previousFirstId
+  }) {
+    const endpoint = `issues/${target.pullRequest}/comments`;
+    return pipe(
+      this.send({
+        endpoint,
+        token: target.token,
+        schema: Schema_exports.Array(IssueComment),
+        request: pipe(
+          HttpClientRequest_exports.get(this.url({ target, path: endpoint })),
+          HttpClientRequest_exports.setUrlParams({
+            page: String(page),
+            per_page: String(commentsPerPage),
+            limit: String(commentsPerPage)
+          })
+        )
+      }),
+      Effect_exports.flatMap(
+        (comments) => pipe(
+          Array_exports.findFirst(
+            comments,
+            ({ body }) => body?.startsWith(marker) ?? false
+          ),
+          Option_exports.match({
+            onSome: (found) => Effect_exports.succeed(Option_exports.some(found)),
+            onNone: () => comments.length === 0 || comments[0]?.id === previousFirstId || page >= maxCommentPages ? Effect_exports.succeed(Option_exports.none()) : this.findMarked({
+              target,
+              marker,
+              page: page + 1,
+              previousFirstId: comments[0]?.id
+            })
+          })
+        )
+      ),
+      Effect_exports.withSpan("PullRequestComments.findMarked", {
+        attributes: { page }
+      })
+    );
+  }
+  create({
+    target,
+    body
+  }) {
+    const endpoint = `issues/${target.pullRequest}/comments`;
+    return pipe(
+      this.send({
+        endpoint,
+        token: target.token,
+        schema: Schema_exports.Unknown,
+        request: pipe(
+          HttpClientRequest_exports.post(this.url({ target, path: endpoint })),
+          HttpClientRequest_exports.bodyText(
+            JSON.stringify({ body }),
+            "application/json"
+          )
+        )
+      }),
+      Effect_exports.asVoid,
+      Effect_exports.withSpan("PullRequestComments.create")
+    );
+  }
+  updateOrCreate({
+    target,
+    id: id2,
+    body
+  }) {
+    return pipe(
+      this.update({ target, id: id2, body }),
+      // Why: a comment carrying the marker but written by someone else cannot be edited with the job's token; the plan gets a comment of its own instead.
+      Effect_exports.catchIf(
+        ({ status }) => status === 403 || status === 404,
+        () => this.create({ target, body })
+      ),
+      Effect_exports.withSpan("PullRequestComments.updateOrCreate", {
+        attributes: { id: id2 }
+      })
+    );
+  }
+  update({
+    target,
+    id: id2,
+    body
+  }) {
+    const endpoint = `issues/comments/${id2}`;
+    return pipe(
+      this.send({
+        endpoint,
+        token: target.token,
+        schema: Schema_exports.Unknown,
+        request: pipe(
+          HttpClientRequest_exports.patch(this.url({ target, path: endpoint })),
+          HttpClientRequest_exports.bodyText(
+            JSON.stringify({ body }),
+            "application/json"
+          )
+        )
+      }),
+      Effect_exports.asVoid,
+      Effect_exports.withSpan("PullRequestComments.update", { attributes: { id: id2 } })
+    );
+  }
+  url({
+    target,
+    path
+  }) {
+    return `${target.apiUrl.href.replace(/\/+$/u, "")}/repos/${target.repository}/${path}`;
+  }
+  send({
+    endpoint,
+    schema: schema2,
+    token,
+    request: bareRequest
+  }) {
+    const request3 = pipe(
+      bareRequest,
+      HttpClientRequest_exports.acceptJson,
+      HttpClientRequest_exports.setHeaders({
+        authorization: `token ${Redacted_exports.value(token)}`,
+        "user-agent": "dokploy-deploy"
+      })
+    );
+    return pipe(
+      this.dependencies.httpClient.execute(request3),
+      // Why: fetch follows redirects by default and would re-send the token to the target; a 3xx must fail like any other non-2xx answer.
+      Effect_exports.provideService(FetchHttpClient_exports.RequestInit, {
+        redirect: "manual"
+      }),
+      Effect_exports.mapError(
+        (cause) => PullRequestCommentError.failed({ endpoint, reason: cause.message })
+      ),
+      Effect_exports.flatMap(
+        (response) => response.status >= 200 && response.status < 300 ? this.decodeBody({ endpoint, schema: schema2, response }) : this.failWith({ endpoint, response })
+      ),
+      Effect_exports.timeoutOrElse({
+        duration: `${requestTimeoutSeconds2} seconds`,
+        orElse: () => Effect_exports.fail(
+          PullRequestCommentError.failed({
+            endpoint,
+            reason: `no answer within ${requestTimeoutSeconds2} seconds`
+          })
+        )
+      }),
+      Effect_exports.withSpan("PullRequestComments.send", { attributes: { endpoint } })
+    );
+  }
+  decodeBody({
+    endpoint,
+    schema: schema2,
+    response
+  }) {
+    return pipe(
+      response.json,
+      Effect_exports.flatMap((body) => Schema_exports.decodeUnknownEffect(schema2)(body)),
+      Effect_exports.mapError(
+        (cause) => PullRequestCommentError.failed({
+          endpoint,
+          reason: `unexpected answer: ${cause.message}`
+        })
+      ),
+      Effect_exports.withSpan("PullRequestComments.decodeBody", {
+        attributes: { endpoint }
+      })
+    );
+  }
+  failWith({
+    endpoint,
+    response
+  }) {
+    return pipe(
+      response.json,
+      Effect_exports.flatMap(
+        (body) => Schema_exports.decodeUnknownEffect(ForgeErrorBody)(body)
+      ),
+      Effect_exports.map(({ message }) => Option_exports.fromUndefinedOr(message)),
+      Effect_exports.orElseSucceed(() => Option_exports.none()),
+      Effect_exports.flatMap(
+        (forgeMessage) => Effect_exports.fail(
+          PullRequestCommentError.fromStatus({
+            endpoint,
+            forgeMessage,
+            status: response.status
+          })
+        )
+      ),
+      Effect_exports.withSpan("PullRequestComments.failWith", {
+        attributes: { endpoint, status: response.status }
+      })
+    );
+  }
+};
+var PullRequestComments = class _PullRequestComments extends Context_exports.Service()("dokploy-deploy/PullRequestComments") {
+  static layer = Layer_exports.effect(
+    _PullRequestComments,
+    Effect_exports.map(
+      effect_service_exports.all({
+        httpClient: HttpClient_exports.HttpClient,
+        inputs: ActionInputs
+      }),
+      ({ httpClient, inputs: { forge, token } }) => ForgePullRequestComments.make({ httpClient, forge, token })
+    )
+  );
+  static buildTestService = (shape = {}) => _PullRequestComments.of({
+    upsert: () => Effect_exports.void,
+    ...shape
+  });
+  static testLayer = Layer_exports.succeed(
+    _PullRequestComments,
+    _PullRequestComments.buildTestService()
+  );
+  static buildTestLayer = (shape) => Layer_exports.succeed(
+    _PullRequestComments,
+    _PullRequestComments.buildTestService(shape)
+  );
 };
 
 // src/workflow-commands.ts
@@ -34960,16 +35903,6 @@ var WorkflowCommands = class _WorkflowCommands extends Context_exports.Service()
 };
 
 // src/deploy-action.ts
-var ApplyUnavailableError = class _ApplyUnavailableError extends Schema_exports.TaggedError()(
-  "ApplyUnavailableError",
-  { message: Schema_exports.String }
-) {
-  static inThisRelease() {
-    return new _ApplyUnavailableError({
-      message: "mode apply is not available in this release: nothing was changed in Dokploy; use mode plan until v1"
-    });
-  }
-};
 function planAnnotations(plan) {
   return {
     environment: plan.environment,
@@ -34982,14 +35915,19 @@ function planAnnotations(plan) {
     keys: plan.keys.length
   };
 }
-function domainLine({
-  host,
-  path,
-  serviceName,
-  port,
-  https
-}) {
-  return `${https ? "https" : "http"}://${host}${path} -> ${serviceName}:${port}`;
+function changeAnnotations({ changes: { env, domains } }) {
+  return {
+    envDrift: env.drift,
+    envAdded: env.added,
+    envChanged: env.changed,
+    envRemoved: env.removed,
+    domainsCreated: domains.create.map(domainLine),
+    domainsUpdated: domains.update.map(
+      ({ desired, fields }) => `${domainLine(desired)} (${fields.join(", ")})`
+    ),
+    domainsDeleted: domains.delete.map(domainLine),
+    domainsUnchanged: domains.unchanged.length
+  };
 }
 var ManifestDeployAction = class _ManifestDeployAction {
   run;
@@ -35002,43 +35940,93 @@ var ManifestDeployAction = class _ManifestDeployAction {
     return new _ManifestDeployAction(dependencies);
   }
   runAction() {
+    const { inputs, workflowCommands } = this.dependencies;
     return pipe(
-      this.dependencies.workflowCommands.mask(this.dependencies.inputs.apiKey),
-      Effect_exports.andThen(() => this.runMode()),
+      workflowCommands.mask(inputs.apiKey),
+      Effect_exports.andThen(
+        () => Option_exports.match(inputs.token, {
+          onNone: () => Effect_exports.void,
+          onSome: (token) => workflowCommands.mask(token)
+        })
+      ),
+      Effect_exports.andThen(() => this.dependencies.planner.plan),
+      Effect_exports.tap((plan) => this.report(plan)),
+      Effect_exports.flatMap((plan) => this.runMode(plan)),
       Effect_exports.withSpan("DeployAction.run", {
-        attributes: { mode: this.dependencies.inputs.mode }
+        attributes: { mode: inputs.mode }
       })
     );
   }
-  runMode() {
+  report(plan) {
+    return pipe(
+      effect_log_exports.info("DeployAction rendered the environment block", {
+        ...planAnnotations(plan),
+        env: plan.env
+      }),
+      Effect_exports.andThen(
+        () => effect_log_exports.info("DeployAction rendered the domains", {
+          environment: plan.environment,
+          domains: plan.domains.map(domainLine)
+        })
+      ),
+      Effect_exports.andThen(
+        () => effect_log_exports.info(
+          hasChanges(plan) ? "DeployAction found changes to apply" : "DeployAction found nothing to change",
+          { environment: plan.environment, ...changeAnnotations(plan) }
+        )
+      ),
+      Effect_exports.andThen(
+        () => plan.unsupported.length === 0 ? Effect_exports.void : effect_log_exports.warning(
+          "DeployAction found allowedMethods, which apply refuses",
+          { routes: plan.unsupported }
+        )
+      ),
+      Effect_exports.withSpan("DeployAction.report")
+    );
+  }
+  runMode(plan) {
     return pipe(
       Match_exports.value(this.dependencies.inputs.mode),
-      Match_exports.when("plan", () => this.plan()),
-      Match_exports.when(
-        "apply",
-        () => Effect_exports.fail(ApplyUnavailableError.inThisRelease())
-      ),
+      Match_exports.when("plan", () => this.comment(plan)),
+      Match_exports.when("apply", () => this.apply(plan)),
       Match_exports.exhaustive,
       Effect_exports.withSpan("DeployAction.runMode")
     );
   }
-  plan() {
+  comment(plan) {
+    const { inputs, comments } = this.dependencies;
+    const onPullRequest = inputs.prComment && Option_exports.isSome(inputs.forge.pullRequest);
     return pipe(
-      this.dependencies.planner.plan,
+      onPullRequest ? pipe(
+        comments.upsert({
+          marker: planMarker(plan),
+          body: renderPlanReport(plan)
+        }),
+        Effect_exports.tap(
+          () => effect_log_exports.info(
+            "DeployAction commented the plan on the pull request",
+            {
+              environment: plan.environment
+            }
+          )
+        )
+      ) : Effect_exports.void,
+      Effect_exports.withSpan("DeployAction.comment", {
+        attributes: { onPullRequest }
+      })
+    );
+  }
+  apply(plan) {
+    return pipe(
+      this.dependencies.applier.apply(plan),
       Effect_exports.tap(
-        (plan) => effect_log_exports.info("DeployAction rendered the environment block", {
-          ...planAnnotations(plan),
-          env: plan.env
-        })
-      ),
-      Effect_exports.tap(
-        ({ environment, domains }) => effect_log_exports.info("DeployAction rendered the domains", {
-          environment,
-          domains: domains.map(domainLine)
-        })
+        (applied) => effect_log_exports.info(
+          hasChanges(plan) ? "DeployAction applied the changes" : "DeployAction changed nothing",
+          { environment: plan.environment, ...applied }
+        )
       ),
       Effect_exports.asVoid,
-      Effect_exports.withSpan("DeployAction.plan")
+      Effect_exports.withSpan("DeployAction.apply")
     );
   }
 };
@@ -35049,7 +36037,9 @@ var DeployAction = class _DeployAction extends Context_exports.Service()("dokplo
       effect_service_exports.all({
         inputs: ActionInputs,
         workflowCommands: WorkflowCommands,
-        planner: DeploymentPlanner
+        planner: DeploymentPlanner,
+        applier: DeploymentApplier,
+        comments: PullRequestComments
       }),
       (dependencies) => ManifestDeployAction.make(dependencies)
     )
@@ -35066,17 +36056,24 @@ var DeployAction = class _DeployAction extends Context_exports.Service()("dokplo
 };
 
 // src/main.ts
+var dokployLayer = DokployClient.layer.pipe(
+  Layer_exports.provide(FetchHttpClient_exports.layer)
+);
 var plannerLayer = DeploymentPlanner.layer.pipe(
   Layer_exports.provide(
     Layer_exports.mergeAll(
       WorkspaceFiles.layer.pipe(Layer_exports.provide(NodeFileSystem_exports.layer)),
-      DokployClient.layer.pipe(Layer_exports.provide(FetchHttpClient_exports.layer))
+      dokployLayer
     )
   )
 );
+var applierLayer = DeploymentApplier.layer.pipe(Layer_exports.provide(dokployLayer));
+var commentsLayer = PullRequestComments.layer.pipe(
+  Layer_exports.provide(FetchHttpClient_exports.layer)
+);
 var actionLayer = Layer_exports.merge(
   DeployAction.layer.pipe(
-    Layer_exports.provide(plannerLayer),
+    Layer_exports.provide(Layer_exports.mergeAll(plannerLayer, applierLayer, commentsLayer)),
     Layer_exports.provide(Layer_exports.mergeAll(ActionInputs.layer, WorkflowCommands.layer))
   ),
   Logger_exports.layer([Logger_exports.consolePretty({ colors: false })])

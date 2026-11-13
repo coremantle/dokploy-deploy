@@ -1,4 +1,4 @@
-import { Config, Context, Layer, Redacted, Schema } from 'effect'
+import { Config, Context, Layer, Option, Redacted, Schema } from 'effect'
 
 import { DeployMode } from '#deploy-mode.ts'
 import { isEnvironmentName } from '#manifest/manifest.ts'
@@ -9,6 +9,11 @@ export const inputVariables = {
   manifest: 'DOKPLOY_DEPLOY_MANIFEST',
   mode: 'DOKPLOY_DEPLOY_MODE',
   environment: 'DOKPLOY_DEPLOY_ENVIRONMENT',
+  token: 'DOKPLOY_DEPLOY_TOKEN',
+  prComment: 'DOKPLOY_DEPLOY_PR_COMMENT',
+  forgeApiUrl: 'DOKPLOY_DEPLOY_FORGE_API_URL',
+  repository: 'DOKPLOY_DEPLOY_REPOSITORY',
+  pullRequest: 'DOKPLOY_DEPLOY_PULL_REQUEST',
 } as const
 
 const ManifestPath = Schema.Trim.check(
@@ -31,12 +36,59 @@ const HttpsUrl = Schema.URLFromString.check(
   }),
 )
 
+const ForgeToken = Schema.Trim.check(
+  Schema.isPattern(/^\S+$/u, {
+    message: 'a token is one word, without spaces or line breaks',
+  }),
+)
+
+const PrComment = Schema.Trim.check(
+  Schema.isPattern(/^(?:true|false)$/u, {
+    message: 'pr-comment is true or false',
+  }),
+)
+
+const Repository = Schema.Trim.check(
+  Schema.isPattern(/^[\w.-]+\/[\w.-]+$/u, {
+    message: 'a repository is owner/name',
+  }),
+)
+
+const PullRequestNumber = Schema.NumberFromString.check(
+  Schema.isInt(),
+  Schema.isGreaterThan(0),
+)
+
+const Blank = Schema.Trim.check(Schema.isMaxLength(0))
+
+function optionalInput<A>({
+  schema,
+  name,
+}: {
+  readonly schema: Schema.Codec<A, string>
+  readonly name: string
+}): Config.Config<Option.Option<A>> {
+  return Config.schema(Blank, name).pipe(
+    Config.map(() => Option.none<A>()),
+    Config.orElse(() => Config.option(Config.schema(schema, name))),
+  )
+}
+
+export interface ForgeContext {
+  readonly apiUrl: Option.Option<URL>
+  readonly repository: Option.Option<string>
+  readonly pullRequest: Option.Option<number>
+}
+
 export interface ActionInputsShape {
   readonly apiUrl: URL
   readonly apiKey: Redacted.Redacted<string>
   readonly manifest: string
   readonly mode: DeployMode
   readonly environment: string
+  readonly token: Option.Option<Redacted.Redacted<string>>
+  readonly prComment: boolean
+  readonly forge: ForgeContext
 }
 
 export class ActionInputs extends Context.Service<
@@ -54,6 +106,28 @@ export class ActionInputs extends Context.Service<
       manifest: Config.schema(ManifestPath, inputVariables.manifest),
       mode: Config.schema(DeployMode, inputVariables.mode),
       environment: Config.schema(EnvironmentName, inputVariables.environment),
+      token: optionalInput({
+        schema: Schema.RedactedFromValue(ForgeToken),
+        name: inputVariables.token,
+      }),
+      prComment: Config.schema(PrComment, inputVariables.prComment).pipe(
+        Config.withDefault('true'),
+        Config.map((value) => value === 'true'),
+      ),
+      forge: Config.all({
+        apiUrl: optionalInput({
+          schema: Schema.URLFromString,
+          name: inputVariables.forgeApiUrl,
+        }),
+        repository: optionalInput({
+          schema: Repository,
+          name: inputVariables.repository,
+        }),
+        pullRequest: optionalInput({
+          schema: PullRequestNumber,
+          name: inputVariables.pullRequest,
+        }),
+      }),
     }),
   )
 
@@ -64,6 +138,13 @@ export class ActionInputs extends Context.Service<
       manifest: 'deploy/dokploy.yml',
       mode: 'plan',
       environment: 'production',
+      token: Option.none(),
+      prComment: true,
+      forge: {
+        apiUrl: Option.none(),
+        repository: Option.none(),
+        pullRequest: Option.none(),
+      },
       ...shape,
     })
 

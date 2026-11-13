@@ -1,30 +1,34 @@
-import { Context, Effect, Layer, Match, Schema, pipe } from 'effect'
+import { Context, Effect, Layer, Match, Option, pipe } from 'effect'
 
 import type { ActionInputsShape } from '#action-inputs.config.ts'
 import { ActionInputs } from '#action-inputs.config.ts'
+import type {
+  AppliedChanges,
+  DeploymentApplierShape,
+  DeploymentApplyError,
+} from '#deployment-applier.ts'
+import { DeploymentApplier } from '#deployment-applier.ts'
 import type {
   DeploymentPlan,
   DeploymentPlanError,
   DeploymentPlannerShape,
 } from '#deployment-planner.ts'
 import { DeploymentPlanner } from '#deployment-planner.ts'
+import { domainLine } from '#domains/domain-diff.ts'
 import { EffectLog, EffectService } from '#effect/index.ts'
+import { hasChanges, planMarker, renderPlanReport } from '#plan-report.ts'
+import type {
+  PullRequestCommentError,
+  PullRequestCommentsShape,
+} from '#pull-request-comments.ts'
+import { PullRequestComments } from '#pull-request-comments.ts'
 import type { WorkflowCommandsShape } from '#workflow-commands.ts'
 import { WorkflowCommands } from '#workflow-commands.ts'
 
-export class ApplyUnavailableError extends Schema.TaggedError<ApplyUnavailableError>()(
-  'ApplyUnavailableError',
-  { message: Schema.String },
-) {
-  static inThisRelease(): ApplyUnavailableError {
-    return new ApplyUnavailableError({
-      message:
-        'mode apply is not available in this release: nothing was changed in Dokploy; use mode plan until v1',
-    })
-  }
-}
-
-export type DeployActionError = ApplyUnavailableError | DeploymentPlanError
+export type DeployActionError =
+  | DeploymentPlanError
+  | DeploymentApplyError
+  | PullRequestCommentError
 
 export interface DeployActionShape {
   readonly run: Effect.Effect<void, DeployActionError>
@@ -34,6 +38,8 @@ interface DeployActionDependencies {
   readonly inputs: ActionInputsShape
   readonly workflowCommands: WorkflowCommandsShape
   readonly planner: DeploymentPlannerShape
+  readonly applier: DeploymentApplierShape
+  readonly comments: PullRequestCommentsShape
 }
 
 function planAnnotations(plan: DeploymentPlan) {
@@ -49,14 +55,19 @@ function planAnnotations(plan: DeploymentPlan) {
   }
 }
 
-function domainLine({
-  host,
-  path,
-  serviceName,
-  port,
-  https,
-}: DeploymentPlan['domains'][number]) {
-  return `${https ? 'https' : 'http'}://${host}${path} -> ${serviceName}:${port}`
+function changeAnnotations({ changes: { env, domains } }: DeploymentPlan) {
+  return {
+    envDrift: env.drift,
+    envAdded: env.added,
+    envChanged: env.changed,
+    envRemoved: env.removed,
+    domainsCreated: domains.create.map(domainLine),
+    domainsUpdated: domains.update.map(
+      ({ desired, fields }) => `${domainLine(desired)} (${fields.join(', ')})`,
+    ),
+    domainsDeleted: domains.delete.map(domainLine),
+    domainsUnchanged: domains.unchanged.length,
+  }
 }
 
 class ManifestDeployAction implements DeployActionShape {
@@ -74,44 +85,106 @@ class ManifestDeployAction implements DeployActionShape {
   }
 
   private runAction() {
+    const { inputs, workflowCommands } = this.dependencies
     return pipe(
-      this.dependencies.workflowCommands.mask(this.dependencies.inputs.apiKey),
-      Effect.andThen(() => this.runMode()),
+      workflowCommands.mask(inputs.apiKey),
+      Effect.andThen(() =>
+        Option.match(inputs.token, {
+          onNone: () => Effect.void,
+          onSome: (token) => workflowCommands.mask(token),
+        }),
+      ),
+      Effect.andThen(() => this.dependencies.planner.plan),
+      Effect.tap((plan) => this.report(plan)),
+      Effect.flatMap((plan) => this.runMode(plan)),
       Effect.withSpan('DeployAction.run', {
-        attributes: { mode: this.dependencies.inputs.mode },
+        attributes: { mode: inputs.mode },
       }),
     )
   }
 
-  private runMode() {
+  private report(plan: DeploymentPlan) {
+    return pipe(
+      EffectLog.info('DeployAction rendered the environment block', {
+        ...planAnnotations(plan),
+        env: plan.env,
+      }),
+      Effect.andThen(() =>
+        EffectLog.info('DeployAction rendered the domains', {
+          environment: plan.environment,
+          domains: plan.domains.map(domainLine),
+        }),
+      ),
+      Effect.andThen(() =>
+        EffectLog.info(
+          hasChanges(plan)
+            ? 'DeployAction found changes to apply'
+            : 'DeployAction found nothing to change',
+          { environment: plan.environment, ...changeAnnotations(plan) },
+        ),
+      ),
+      Effect.andThen(() =>
+        plan.unsupported.length === 0
+          ? Effect.void
+          : EffectLog.warning(
+              'DeployAction found allowedMethods, which apply refuses',
+              { routes: plan.unsupported },
+            ),
+      ),
+      Effect.withSpan('DeployAction.report'),
+    )
+  }
+
+  private runMode(plan: DeploymentPlan) {
     return pipe(
       Match.value(this.dependencies.inputs.mode),
-      Match.when('plan', () => this.plan()),
-      Match.when('apply', () =>
-        Effect.fail(ApplyUnavailableError.inThisRelease()),
-      ),
+      Match.when('plan', () => this.comment(plan)),
+      Match.when('apply', () => this.apply(plan)),
       Match.exhaustive,
       Effect.withSpan('DeployAction.runMode'),
     )
   }
 
-  private plan() {
+  private comment(plan: DeploymentPlan) {
+    const { inputs, comments } = this.dependencies
+    const onPullRequest =
+      inputs.prComment && Option.isSome(inputs.forge.pullRequest)
     return pipe(
-      this.dependencies.planner.plan,
-      Effect.tap((plan) =>
-        EffectLog.info('DeployAction rendered the environment block', {
-          ...planAnnotations(plan),
-          env: plan.env,
-        }),
-      ),
-      Effect.tap(({ environment, domains }) =>
-        EffectLog.info('DeployAction rendered the domains', {
-          environment,
-          domains: domains.map(domainLine),
-        }),
+      onPullRequest
+        ? pipe(
+            comments.upsert({
+              marker: planMarker(plan),
+              body: renderPlanReport(plan),
+            }),
+            Effect.tap(() =>
+              EffectLog.info(
+                'DeployAction commented the plan on the pull request',
+                {
+                  environment: plan.environment,
+                },
+              ),
+            ),
+          )
+        : Effect.void,
+      Effect.withSpan('DeployAction.comment', {
+        attributes: { onPullRequest },
+      }),
+    )
+  }
+
+  private apply(plan: DeploymentPlan) {
+    return pipe(
+      this.dependencies.applier.apply(plan),
+      Effect.tap((applied: AppliedChanges) =>
+        EffectLog.info(
+          hasChanges(plan)
+            ? 'DeployAction applied the changes'
+            : 'DeployAction changed nothing',
+          { environment: plan.environment, ...applied },
+        ),
       ),
       Effect.asVoid,
-      Effect.withSpan('DeployAction.plan'),
+      Effect.withSpan('DeployAction.apply'),
     )
   }
 }
@@ -127,6 +200,8 @@ export class DeployAction extends Context.Service<
         inputs: ActionInputs,
         workflowCommands: WorkflowCommands,
         planner: DeploymentPlanner,
+        applier: DeploymentApplier,
+        comments: PullRequestComments,
       }),
       (dependencies) => ManifestDeployAction.make(dependencies),
     ),

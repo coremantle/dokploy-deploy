@@ -14,13 +14,21 @@ inputs:
     required: false
     default: deploy/dokploy.yml
   mode:
-    description: "`plan` reads the manifest and Dokploy, then reports the environment block and the domains; `apply` makes the changes. In v0, `apply` fails without touching Dokploy."
+    description: "`plan` reads the manifest and Dokploy and reports what would change, without writing to Dokploy (on a pull request it also comments that report); `apply` writes the changes: the environment block when it differs, then the domains of the compose."
     required: false
     default: plan
   environment:
     description: Key of the manifest's `environments` to deploy, e.g. production or staging.
     required: false
     default: production
+  token:
+    description: "Token that comments the plan on the pull request. The job's own token by default; on GitHub, grant the job `pull-requests: write`. Masked in the job log."
+    required: false
+    default: ${{ github.token }}
+  pr-comment:
+    description: "`true` posts the plan as one comment on the pull request, updated on each run; `false` only logs it. Only `plan` on a pull request event comments."
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -34,6 +42,12 @@ runs:
         DOKPLOY_DEPLOY_MANIFEST: ${{ inputs.manifest }}
         DOKPLOY_DEPLOY_MODE: ${{ inputs.mode }}
         DOKPLOY_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        DOKPLOY_DEPLOY_TOKEN: ${{ inputs.token }}
+        DOKPLOY_DEPLOY_PR_COMMENT: ${{ inputs.pr-comment }}
+        # Why: GitHub always sets github.api_url; the fallback is Forgejo's API under its server URL, should a runner leave it empty.
+        DOKPLOY_DEPLOY_FORGE_API_URL: ${{ github.api_url || format('{0}/api/v1', github.server_url) }}
+        DOKPLOY_DEPLOY_REPOSITORY: ${{ github.repository }}
+        DOKPLOY_DEPLOY_PULL_REQUEST: ${{ github.event.pull_request.number }}
         DOKPLOY_DEPLOY_ENTRY: ${{ github.action_path }}/dist/index.mjs
       run: |
         if ! command -v node >/dev/null 2>&1; then

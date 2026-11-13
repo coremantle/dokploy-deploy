@@ -3,6 +3,7 @@ import { Context, Effect, Fiber, Layer, Redacted } from 'effect'
 import { TestClock } from 'effect/testing'
 import {
   FetchHttpClient,
+  HttpBody,
   HttpClient,
   HttpClientError,
   HttpClientResponse,
@@ -475,6 +476,195 @@ describe('DokployClient', () => {
 
       // Then: the unrelated provider does not fail the plan
       expect(providers).toHaveLength(1)
+    }),
+  )
+})
+
+interface SeenWrite {
+  readonly method: string
+  readonly url: URL
+  readonly apiKey: string | undefined
+  readonly body: unknown
+}
+
+function recordingDokploy(answer: FakeAnswer) {
+  const seen: Array<SeenWrite> = []
+  const httpClient = HttpClient.make((request, url) =>
+    Effect.sync(() => {
+      seen.push({
+        url,
+        method: request.method,
+        apiKey: request.headers['x-api-key'],
+        body:
+          request.body instanceof HttpBody.Uint8Array
+            ? JSON.parse(new TextDecoder().decode(request.body.body))
+            : undefined,
+      })
+      return answerFor({ request, answer })
+    }),
+  )
+  const layer = DokployClient.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(HttpClient.HttpClient, httpClient),
+        ActionInputs.buildTestLayer({ apiKey: Redacted.make(apiKey) }),
+      ),
+    ),
+  )
+  return { seen, layer }
+}
+
+describe('DokployClient reads and writes of a compose', () => {
+  effect('should read the env of a compose, empty when Dokploy has none', () =>
+    Effect.gen(function* () {
+      // Given: compose.one answering a compose without env
+      const { seen, layer } = recordingDokploy(
+        jsonAnswer({ composeId: 'compose-hello', name: 'hello', env: null }),
+      )
+
+      // When: reading its env
+      const env = yield* DokployClient.pipe(
+        Effect.flatMap((client) => client.composeEnv('compose-hello')),
+        Effect.provide(layer),
+      )
+
+      // Then: an empty block, read with the compose id
+      expect(env).toBe('')
+      expect(seen[0]?.url.pathname).toBe('/api/compose.one')
+      expect(seen[0]?.url.searchParams.get('composeId')).toBe('compose-hello')
+    }),
+  )
+
+  effect('should keep only the routing fields of a domain', () =>
+    Effect.gen(function* () {
+      // Given: domain.byComposeId answering a full domain
+      const { layer } = recordingDokploy(
+        jsonAnswer([
+          {
+            domainId: 'domain-web',
+            host: 'app.demo.example.com',
+            https: true,
+            port: 3000,
+            path: '/',
+            serviceName: 'web',
+            domainType: 'compose',
+            certificateType: 'letsencrypt',
+            composeId: 'compose-hello',
+            middlewares: [],
+            stripPath: false,
+          },
+        ]),
+      )
+
+      // When: listing the domains
+      const domains = yield* DokployClient.pipe(
+        Effect.flatMap((client) => client.composeDomains('compose-hello')),
+        Effect.provide(layer),
+      )
+
+      // Then: the fields the diff compares are kept
+      expect(domains).toEqual([
+        {
+          domainId: 'domain-web',
+          host: 'app.demo.example.com',
+          https: true,
+          port: 3000,
+          path: '/',
+          serviceName: 'web',
+          certificateType: 'letsencrypt',
+        },
+      ])
+    }),
+  )
+
+  effect('should post the env block with the api key', () =>
+    Effect.gen(function* () {
+      // Given: Dokploy accepting the write
+      const { seen, layer } = recordingDokploy(jsonAnswer(true))
+
+      // When: saving the env
+      yield* DokployClient.pipe(
+        Effect.flatMap((client) =>
+          client.saveEnvironment({ composeId: 'compose-hello', env: 'A=1\n' }),
+        ),
+        Effect.provide(layer),
+      )
+
+      // Then: a JSON POST to compose.saveEnvironment
+      expect(seen).toEqual([
+        {
+          apiKey,
+          method: 'POST',
+          url: new URL(
+            'https://dokploy.example.com/api/compose.saveEnvironment',
+          ),
+          body: { composeId: 'compose-hello', env: 'A=1\n' },
+        },
+      ])
+    }),
+  )
+
+  effect('should create, update and delete compose domains', () =>
+    Effect.gen(function* () {
+      // Given: Dokploy accepting every write
+      const { seen, layer } = recordingDokploy(jsonAnswer({}))
+      const settings = {
+        host: 'app.demo.example.com',
+        path: '/',
+        port: 3000,
+        serviceName: 'web',
+        https: true,
+        certificateType: 'letsencrypt',
+      }
+
+      // When: creating, updating and deleting
+      yield* DokployClient.pipe(
+        Effect.flatMap((client) =>
+          Effect.all([
+            client.createDomain({ composeId: 'compose-hello', ...settings }),
+            client.updateDomain({ domainId: 'domain-web', ...settings }),
+            client.deleteDomain('domain-old'),
+          ]),
+        ),
+        Effect.provide(layer),
+      )
+
+      // Then: each write targets its endpoint as a compose domain
+      expect(seen.map(({ url, body }) => [url.pathname, body])).toEqual([
+        [
+          '/api/domain.create',
+          { composeId: 'compose-hello', ...settings, domainType: 'compose' },
+        ],
+        [
+          '/api/domain.update',
+          { domainId: 'domain-web', ...settings, domainType: 'compose' },
+        ],
+        ['/api/domain.delete', { domainId: 'domain-old' }],
+      ])
+    }),
+  )
+
+  effect('should fail a refused write with the endpoint and the message', () =>
+    Effect.gen(function* () {
+      // Given: a member whose role cannot write env vars
+      const { layer } = recordingDokploy(
+        jsonAnswer({ message: 'Permission denied: envVars write' }, 403),
+      )
+
+      // When: saving the env
+      const error = yield* Effect.flip(
+        DokployClient.pipe(
+          Effect.flatMap((client) =>
+            client.saveEnvironment({ composeId: 'compose-hello', env: '' }),
+          ),
+          Effect.provide(layer),
+        ),
+      )
+
+      // Then: the error names the endpoint, the status and Dokploy's words
+      expect(error.message).toBe(
+        'Dokploy answered 403 on compose.saveEnvironment: Permission denied: envVars write',
+      )
     }),
   )
 })
