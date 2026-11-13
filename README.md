@@ -148,23 +148,23 @@ domains:
     port: 4000
 ```
 
-| Field                                  | Required | Default                      | Meaning                                                                                                                                  |
-| -------------------------------------- | -------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`                              | yes      | —                            | Always `1`.                                                                                                                              |
-| `composeFile`                          | no       | `docker-compose.dokploy.yml` | Compose file, relative to the workspace: its services must hold the domains, and its `${VAR}` without a default must all be secret keys. |
-| `secrets.folder`                       | yes      | —                            | Infisical folder the references point to: `/<project>`, a folder under it, or `/shared` (see the reference guard).                       |
-| `environments.<name>`                  | yes, ≥ 1 | —                            | One entry per environment; `<name>` is what the `environment` input selects.                                                             |
-| `environments.<name>.dokploy`          | yes      | —                            | `project`, `environment` and `compose` **names**, resolved to ids through the API.                                                       |
-| `environments.<name>.secrets.provider` | no       | see below                    | Dokploy vault provider that reads `secrets.folder` for this environment.                                                                 |
-| `environments.<name>.domain`           | yes      | —                            | Parent domain: every host is `<subdomain>.<domain>`.                                                                                     |
-| `domains[]`                            | yes, ≥ 1 | —                            | Shared by every environment.                                                                                                             |
-| `domains[].service`                    | yes      | —                            | Compose service the domain routes to.                                                                                                    |
-| `domains[].subdomain`                  | yes      | —                            | A single DNS label.                                                                                                                      |
-| `domains[].port`                       | yes      | —                            | Container port, 1–65535.                                                                                                                 |
-| `domains[].path`                       | no       | `/`                          | Path prefix.                                                                                                                             |
-| `domains[].https`                      | no       | `true`                       | Serve the domain over HTTPS.                                                                                                             |
-| `domains[].certificateType`            | no       | `letsencrypt`                | `letsencrypt`, `none` or `custom`.                                                                                                       |
-| `domains[].allowedMethods`             | no       | —                            | HTTP methods the domain answers. Dokploy's domain API has no such setting: `plan` warns and `apply` refuses the manifest.                |
+| Field                                  | Required | Default                      | Meaning                                                                                                                                                                     |
+| -------------------------------------- | -------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                              | yes      | —                            | Always `1`.                                                                                                                                                                 |
+| `composeFile`                          | no       | `docker-compose.dokploy.yml` | Compose file, relative to the workspace: its services must hold the domains, and its `${VAR}` without a default must all be secret keys.                                    |
+| `secrets.folder`                       | yes      | —                            | Infisical folder the references point to: `/<project>`, a folder under it, or `/shared` (see the reference guard).                                                          |
+| `environments.<name>`                  | yes, ≥ 1 | —                            | One entry per environment; `<name>` is what the `environment` input selects.                                                                                                |
+| `environments.<name>.dokploy`          | yes      | —                            | `project`, `environment` and `compose` **names**, resolved to ids through the API.                                                                                          |
+| `environments.<name>.secrets.provider` | no       | see below                    | Dokploy vault provider that reads `secrets.folder` for this environment.                                                                                                    |
+| `environments.<name>.domain`           | yes      | —                            | Parent domain: every host is `<subdomain>.<domain>`.                                                                                                                        |
+| `domains[]`                            | yes, ≥ 1 | —                            | Shared by every environment.                                                                                                                                                |
+| `domains[].service`                    | yes      | —                            | Compose service the domain routes to.                                                                                                                                       |
+| `domains[].subdomain`                  | yes      | —                            | A single DNS label.                                                                                                                                                         |
+| `domains[].port`                       | yes      | —                            | Container port, 1–65535.                                                                                                                                                    |
+| `domains[].path`                       | no       | `/`                          | Path prefix.                                                                                                                                                                |
+| `domains[].https`                      | no       | `true`                       | Serve the domain over HTTPS.                                                                                                                                                |
+| `domains[].certificateType`            | no       | `letsencrypt`                | `letsencrypt`, `none` or `custom`.                                                                                                                                          |
+| `domains[].allowedMethods`             | no       | —                            | HTTP methods the domain answers. Dokploy's domain API has no such setting: `plan` warns and `apply` refuses the manifest — use [Traefik labels](#restricting-http-methods). |
 
 Unknown keys are rejected: a typo fails `plan` instead of being ignored. The
 default provider is the one babel creates when onboarding the project:
@@ -209,7 +209,9 @@ names (added, changed, removed), never a current value.
 
 `apply` runs the same checks and diff as `plan`, then:
 
-1. refuses the manifest, before any write, if a domain sets `allowedMethods`;
+1. refuses the manifest, before any write, if a domain sets `allowedMethods`
+   (carry it as Traefik labels instead, see
+   [Restricting HTTP methods](#restricting-http-methods));
 2. saves the environment block with `compose.saveEnvironment` — only when it
    differs from the current env, which it then **replaces** entirely;
 3. updates, with `domain.update`, the domains whose service, port, `https` or
@@ -239,6 +241,42 @@ The key's member needs, on the compose: read access, `envVars: write`,
 `delete`, and `deployment: create` and `read`. Create the key with
 `rateLimitEnabled: false`: a deploy polls Dokploy every 5 seconds, far beyond
 the default limit of a Dokploy API key (10 requests a day).
+
+### Restricting HTTP methods
+
+Dokploy domains match on host and path only, so `allowedMethods` cannot be
+applied through its API. Carry the allow-list in the compose file instead, as
+Traefik labels on the routed service: a router of higher priority than the
+ones Dokploy generates answers **403** to every other method, through a
+deny-all `ipAllowList` and Traefik's `noop@internal` service. One router per
+entrypoint; on `web` it also takes precedence over Dokploy's redirect to
+https. Leave `allowedMethods` out of the manifest.
+
+```yaml
+services:
+  my-app-storage:
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.my-app-deny.ipallowlist.sourcerange=127.0.0.1/32
+      - traefik.http.routers.my-app-methods-websecure.rule=Host(`assets.example.com`) && !(Method(`GET`) || Method(`HEAD`))
+      - traefik.http.routers.my-app-methods-websecure.priority=100000
+      - traefik.http.routers.my-app-methods-websecure.entrypoints=websecure
+      - traefik.http.routers.my-app-methods-websecure.tls.certresolver=letsencrypt
+      - traefik.http.routers.my-app-methods-websecure.middlewares=my-app-deny
+      - traefik.http.routers.my-app-methods-websecure.service=noop@internal
+      - traefik.http.routers.my-app-methods-web.rule=Host(`assets.example.com`) && !(Method(`GET`) || Method(`HEAD`))
+      - traefik.http.routers.my-app-methods-web.priority=100000
+      - traefik.http.routers.my-app-methods-web.entrypoints=web
+      - traefik.http.routers.my-app-methods-web.middlewares=my-app-deny
+      - traefik.http.routers.my-app-methods-web.service=noop@internal
+```
+
+Router and middleware names must be unique across the Traefik instance, and
+the entrypoint and certificate resolver names must match Dokploy's Traefik
+(`web`, `websecure`, `letsencrypt` by default). Add `&& PathPrefix(...)` to the
+rules to restrict a path only. The labels live in the compose, not in the env
+or the domains: `plan` shows no change for them, and the next deploy makes
+them live.
 
 ### The deploy
 
