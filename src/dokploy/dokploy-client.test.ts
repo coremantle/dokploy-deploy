@@ -667,4 +667,96 @@ describe('DokployClient reads and writes of a compose', () => {
       )
     }),
   )
+  effect(
+    'should list the deployments of a compose, keeping what is polled',
+    () =>
+      Effect.gen(function* () {
+        // Given: deployment.allByCompose answering a full deployment
+        const { seen, layer } = recordingDokploy(
+          jsonAnswer([
+            {
+              deploymentId: 'deployment-1',
+              title: 'feat: hello',
+              description: 'Commit: 2f0be93668d4e0f84da0e89a01a8a084a743b08b',
+              status: 'done',
+              logPath: '/etc/dokploy/logs/hello/hello.log',
+              composeId: 'compose-hello',
+              createdAt: '2026-11-13T18:55:41.744Z',
+              startedAt: '2026-11-13T18:55:41.743Z',
+              finishedAt: '2026-11-13T18:55:42.643Z',
+              errorMessage: null,
+            },
+          ]),
+        )
+
+        // When: listing the deployments
+        const deployments = yield* DokployClient.pipe(
+          Effect.flatMap((client) =>
+            client.composeDeployments('compose-hello'),
+          ),
+          Effect.provide(layer),
+        )
+
+        // Then: one GET with the compose id, and only the polled fields are kept
+        expect(seen[0]?.method).toBe('GET')
+        expect(seen[0]?.url.pathname).toBe('/api/deployment.allByCompose')
+        expect(seen[0]?.url.searchParams.get('composeId')).toBe('compose-hello')
+        expect(deployments).toEqual([
+          {
+            deploymentId: 'deployment-1',
+            description: 'Commit: 2f0be93668d4e0f84da0e89a01a8a084a743b08b',
+            status: 'done',
+            createdAt: '2026-11-13T18:55:41.744Z',
+            startedAt: '2026-11-13T18:55:41.743Z',
+            finishedAt: '2026-11-13T18:55:42.643Z',
+          },
+        ])
+      }),
+  )
+
+  effect('should ask Dokploy to deploy the compose', () =>
+    Effect.gen(function* () {
+      // Given: Dokploy queueing the deployment
+      const { seen, layer } = recordingDokploy(
+        jsonAnswer({ success: true, message: 'Deployment queued' }),
+      )
+
+      // When: deploying the compose
+      yield* DokployClient.pipe(
+        Effect.flatMap((client) => client.deployCompose('compose-hello')),
+        Effect.provide(layer),
+      )
+
+      // Then: a JSON POST to compose.deploy with only the compose id
+      expect(seen).toEqual([
+        {
+          apiKey,
+          method: 'POST',
+          url: new URL('https://dokploy.example.com/api/compose.deploy'),
+          body: { composeId: 'compose-hello' },
+        },
+      ])
+    }),
+  )
+
+  effect('should read the tail of a deployment log', () =>
+    Effect.gen(function* () {
+      // Given: deployment.readLogs answering the log as a string
+      const { seen, layer } = recordingDokploy(jsonAnswer('line 1\nline 2\n'))
+
+      // When: reading the last lines
+      const log = yield* DokployClient.pipe(
+        Effect.flatMap((client) =>
+          client.deploymentLog({ deploymentId: 'deployment-1', tail: 50 }),
+        ),
+        Effect.provide(layer),
+      )
+
+      // Then: the deployment and the line count are sent, the text comes back
+      expect(log).toBe('line 1\nline 2\n')
+      expect(seen[0]?.url.pathname).toBe('/api/deployment.readLogs')
+      expect(seen[0]?.url.searchParams.get('deploymentId')).toBe('deployment-1')
+      expect(seen[0]?.url.searchParams.get('tail')).toBe('50')
+    }),
+  )
 })

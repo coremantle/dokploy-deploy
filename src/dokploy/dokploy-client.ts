@@ -51,6 +51,17 @@ export const DokployDomain = Schema.Struct({
 
 export type DokployDomain = typeof DokployDomain.Type
 
+export const DokployDeployment = Schema.Struct({
+  deploymentId: Schema.String,
+  status: Schema.NullOr(Schema.String),
+  description: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  createdAt: Schema.String,
+  startedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  finishedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+})
+
+export type DokployDeployment = typeof DokployDeployment.Type
+
 const DokployErrorBody = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
 })
@@ -199,6 +210,16 @@ export interface DokployClientShape {
     domain: DomainSettings & { readonly domainId: string },
   ) => Effect.Effect<void, DokployError>
   readonly deleteDomain: (domainId: string) => Effect.Effect<void, DokployError>
+  readonly composeDeployments: (
+    composeId: string,
+  ) => Effect.Effect<ReadonlyArray<DokployDeployment>, DokployError>
+  readonly deployCompose: (
+    composeId: string,
+  ) => Effect.Effect<void, DokployError>
+  readonly deploymentLog: (query: {
+    readonly deploymentId: string
+    readonly tail: number
+  }) => Effect.Effect<string, DokployError>
 }
 
 interface DokployClientDependencies {
@@ -357,6 +378,47 @@ class HttpDokployClient implements DokployClientShape {
     )
   }
 
+  composeDeployments(composeId: string) {
+    return pipe(
+      this.query({
+        endpoint: 'deployment.allByCompose',
+        schema: Schema.Array(DokployDeployment),
+        params: { composeId },
+      }),
+      Effect.withSpan('DokployClient.composeDeployments', {
+        attributes: { composeId },
+      }),
+    )
+  }
+
+  deployCompose(composeId: string) {
+    return pipe(
+      this.mutate({ endpoint: 'compose.deploy', body: { composeId } }),
+      Effect.withSpan('DokployClient.deployCompose', {
+        attributes: { composeId },
+      }),
+    )
+  }
+
+  deploymentLog({
+    deploymentId,
+    tail,
+  }: {
+    readonly deploymentId: string
+    readonly tail: number
+  }) {
+    return pipe(
+      this.query({
+        endpoint: 'deployment.readLogs',
+        schema: Schema.String,
+        params: { deploymentId, tail: String(tail) },
+      }),
+      Effect.withSpan('DokployClient.deploymentLog', {
+        attributes: { deploymentId, tail },
+      }),
+    )
+  }
+
   private query<S extends Schema.Top & { readonly DecodingServices: never }>({
     endpoint,
     schema,
@@ -509,6 +571,9 @@ export class DokployClient extends Context.Service<
       createDomain: () => Effect.void,
       updateDomain: () => Effect.void,
       deleteDomain: () => Effect.void,
+      composeDeployments: () => Effect.succeed([]),
+      deployCompose: () => Effect.void,
+      deploymentLog: () => Effect.succeed(''),
       ...shape,
     })
 

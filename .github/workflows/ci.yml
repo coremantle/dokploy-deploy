@@ -66,7 +66,7 @@ jobs:
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
             -addext subjectAltName=DNS:localhost \
             -keyout "$RUNNER_TEMP/fake-dokploy.key" -out "$RUNNER_TEMP/fake-dokploy.crt"
-          nohup node .github/smoke/fake-dokploy.mjs "$RUNNER_TEMP/fake-dokploy.crt" "$RUNNER_TEMP/fake-dokploy.key" 8443 > "$RUNNER_TEMP/fake-dokploy.log" 2>&1 &
+          nohup node .github/smoke/fake-dokploy.mjs "$RUNNER_TEMP/fake-dokploy.crt" "$RUNNER_TEMP/fake-dokploy.key" 8443 "$GITHUB_SHA" > "$RUNNER_TEMP/fake-dokploy.log" 2>&1 &
           for _ in $(seq 1 20); do
             curl -sf --cacert "$RUNNER_TEMP/fake-dokploy.crt" -H 'x-api-key: smoke-test-key-not-a-secret' https://localhost:8443/api/project.all >/dev/null && exit 0
             sleep 0.5
@@ -94,6 +94,7 @@ jobs:
           ! grep -q '^POST ' "$RUNNER_TEMP/fake-dokploy.log"
 
       - name: Apply through the action
+        id: apply
         uses: ./
         env:
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
@@ -103,15 +104,26 @@ jobs:
           manifest: .github/smoke/dokploy.yml
           mode: apply
 
-      - name: The apply converged the env and the domains
+      - name: The apply converged the env and the domains, then deployed the job's commit
+        env:
+          DEPLOYMENT_ID: ${{ steps.apply.outputs.deployment-id }}
+          STATUS: ${{ steps.apply.outputs.status }}
+          SHA: ${{ steps.apply.outputs.sha }}
+          DURATION: ${{ steps.apply.outputs.duration }}
         run: |
           cat "$RUNNER_TEMP/fake-dokploy.log"
           grep -q 'POST /api/compose.saveEnvironment -> 200' "$RUNNER_TEMP/fake-dokploy.log"
           grep -q 'POST /api/domain.delete -> 200' "$RUNNER_TEMP/fake-dokploy.log"
           grep -q 'POST /api/domain.create -> 200' "$RUNNER_TEMP/fake-dokploy.log"
-          grep -c '^POST ' "$RUNNER_TEMP/fake-dokploy.log" > "$RUNNER_TEMP/writes-after-first-apply"
+          grep -q 'POST /api/compose.deploy -> 200' "$RUNNER_TEMP/fake-dokploy.log"
+          test "$DEPLOYMENT_ID" = deployment-1
+          test "$STATUS" = "done"
+          test "$SHA" = "$GITHUB_SHA"
+          test -n "$DURATION"
+          grep -v 'compose.deploy' "$RUNNER_TEMP/fake-dokploy.log" | grep -c '^POST ' > "$RUNNER_TEMP/writes-after-first-apply"
 
       - name: Apply a second time
+        id: reapply
         uses: ./
         env:
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
@@ -121,6 +133,12 @@ jobs:
           manifest: .github/smoke/dokploy.yml
           mode: apply
 
-      - name: The second apply wrote nothing
+      # Why: apply deploys on every run — a re-run redeploys the same commit (e.g. to pick up a rotated secret) — but writes nothing else the second time.
+      - name: The second apply wrote nothing but a new deployment
+        env:
+          DEPLOYMENT_ID: ${{ steps.reapply.outputs.deployment-id }}
+          SHA: ${{ steps.reapply.outputs.sha }}
         run: |
-          test "$(grep -c '^POST ' "$RUNNER_TEMP/fake-dokploy.log")" = "$(cat "$RUNNER_TEMP/writes-after-first-apply")"
+          test "$(grep -v 'compose.deploy' "$RUNNER_TEMP/fake-dokploy.log" | grep -c '^POST ')" = "$(cat "$RUNNER_TEMP/writes-after-first-apply")"
+          test "$DEPLOYMENT_ID" = deployment-2
+          test "$SHA" = "$GITHUB_SHA"

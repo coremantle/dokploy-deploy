@@ -1,6 +1,6 @@
 {
   "name": "dokploy-deploy",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Forgejo/GitHub action: an application deploys itself to Dokploy with a project-scoped key",
   "license": "MIT",

@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:https'
 
-const [certificatePath, keyPath, port = '8443'] = process.argv.slice(2)
+const [
+  certificatePath,
+  keyPath,
+  port = '8443',
+  commit = '0123456789abcdef0123456789abcdef01234567',
+] = process.argv.slice(2)
 const expectedKey = 'smoke-test-key-not-a-secret'
 
 const compose = {
@@ -21,6 +26,33 @@ const compose = {
 }
 
 let nextDomain = 1
+
+const deployments = []
+
+// Why: like Dokploy, the deployment ends `done` first and records its commit a moment later — the action must wait for it.
+function runDeployment() {
+  const now = new Date().toISOString()
+  const deployment = {
+    deploymentId: `deployment-${deployments.length + 1}`,
+    title: 'Manual deployment',
+    description: '',
+    status: 'running',
+    createdAt: now,
+    startedAt: now,
+    finishedAt: null,
+    errorMessage: null,
+  }
+  deployments.unshift(deployment)
+  setTimeout(() => {
+    deployment.status = 'done'
+    deployment.finishedAt = new Date().toISOString()
+    setTimeout(() => {
+      deployment.title = 'smoke commit'
+      deployment.description = `Commit: ${commit}`
+    }, 1000)
+  }, 1000)
+  return { success: true, message: 'Deployment queued' }
+}
 
 const reads = {
   '/api/project.all': () => [
@@ -51,6 +83,8 @@ const reads = {
     env: compose.env,
   }),
   '/api/domain.byComposeId': () => compose.domains,
+  '/api/deployment.allByCompose': () => deployments,
+  '/api/deployment.readLogs': () => 'Docker Compose Deployed: ✅\n',
 }
 
 const writes = {
@@ -69,6 +103,7 @@ const writes = {
     )
     return true
   },
+  '/api/compose.deploy': () => runDeployment(),
   '/api/domain.delete': ({ domainId }) => {
     compose.domains = compose.domains.filter(
       (current) => current.domainId !== domainId,
