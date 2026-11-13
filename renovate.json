@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", ":dependencyDashboard"],
+  "timezone": "Europe/Paris",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "automerge": false,
+  "lockFileMaintenance": { "enabled": true },
+  "packageRules": [
+    {
+      "description": "Effect packages release in lockstep — always one PR",
+      "matchPackageNames": ["effect", "@effect/**"],
+      "groupName": "effect",
+      "separateMajorMinor": false
+    },
+    {
+      "description": "Development tooling only: grouped, it never reaches dist/",
+      "matchDepTypes": ["devDependencies"],
+      "matchPackageNames": ["!@effect/**", "!esbuild"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev tooling"
+    }
+  ]
+}

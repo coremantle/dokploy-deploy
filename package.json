@@ -1,0 +1,40 @@
+{
+  "name": "dokploy-deploy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Forgejo/GitHub action: an application deploys itself to Dokploy with a project-scoped key",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [],
+  "imports": {
+    "#*": "./src/*"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs",
+    "build:check": "pnpm build && git diff -- dist && test -z \"$(git status --porcelain -- dist)\"",
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "oxfmt --write \"**/*.{ts,md}\"",
+    "format:check": "oxfmt --check \"**/*.{ts,md}\"",
+    "prepare": "effect-tsgo patch"
+  },
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=24.18.1"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4.1.4",
+    "effect": "^4.1.4"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "^0.68.1",
+    "@effect/vitest": "^4.1.4",
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2",
+    "oxfmt": "^0.78.0",
+    "oxlint": "^1.93.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
