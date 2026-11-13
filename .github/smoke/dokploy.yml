@@ -1,0 +1,19 @@
+# Manifest of the CI smoke test, planned against .github/smoke/fake-dokploy.mjs.
+version: 1
+composeFile: .github/smoke/docker-compose.dokploy.yml
+
+secrets:
+  folder: /smoke/hello
+
+environments:
+  production:
+    dokploy:
+      project: Smoke
+      environment: production
+      compose: hello
+    domain: smoke.example.com
+
+domains:
+  - service: hello
+    subdomain: hello
+    port: 8080

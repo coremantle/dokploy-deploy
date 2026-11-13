@@ -1,20 +1,47 @@
 import { describe, effect, expect } from '@effect/vitest'
-import { Effect, Layer, Logger, Redacted } from 'effect'
+import { Effect, Layer, Logger, Redacted, References } from 'effect'
 
 import { ActionInputs } from '#action-inputs.config.ts'
 import type { ActionInputsShape } from '#action-inputs.config.ts'
 import { ApplyUnavailableError, DeployAction } from '#deploy-action.ts'
+import {
+  DeploymentPlanner,
+  UnknownEnvironmentError,
+} from '#deployment-planner.ts'
+import type { DeploymentPlannerShape } from '#deployment-planner.ts'
 import { WorkflowCommands } from '#workflow-commands.ts'
 
 interface RecordedStep {
-  readonly kind: 'mask' | 'log'
+  readonly kind: 'mask' | 'log' | 'plan'
   readonly detail: string
 }
 
-function recordingAction(inputs: Partial<ActionInputsShape>) {
+function recordPlan(steps: Array<RecordedStep>) {
+  return Effect.sync(() => {
+    steps.push({ kind: 'plan', detail: 'planned' })
+  })
+}
+
+function recordingAction({
+  inputs = {},
+  planner = {},
+}: {
+  readonly inputs?: Partial<ActionInputsShape>
+  readonly planner?: Partial<DeploymentPlannerShape>
+}) {
   const steps: Array<RecordedStep> = []
-  const recordingLogger = Logger.make(({ logLevel, message }) => {
-    steps.push({ kind: 'log', detail: `${logLevel} ${String(message)}` })
+  const recordingLogger = Logger.make(({ logLevel, message, fiber }) => {
+    const annotations = JSON.stringify(
+      fiber.getRef(References.CurrentLogAnnotations),
+    )
+    steps.push({
+      kind: 'log',
+      detail: `${logLevel} ${String(message)} ${annotations}`,
+    })
+  })
+  const testPlanner = DeploymentPlanner.buildTestService(planner)
+  const recordedPlanner = DeploymentPlanner.buildTestLayer({
+    plan: Effect.andThen(recordPlan(steps), testPlanner.plan),
   })
   const layer = DeployAction.layer.pipe(
     Layer.provide(
@@ -26,6 +53,7 @@ function recordingAction(inputs: Partial<ActionInputsShape>) {
               steps.push({ kind: 'mask', detail: Redacted.value(secret) })
             }),
         }),
+        recordedPlanner,
       ),
     ),
   )
@@ -40,7 +68,7 @@ describe('DeployAction', () => {
     Effect.gen(function* () {
       // Given: a caller's key
       const apiKey = Redacted.make('caller-dokploy-api-key')
-      const { layer, steps } = recordingAction({ apiKey })
+      const { layer, steps } = recordingAction({ inputs: { apiKey } })
 
       // When: running the action
       yield* DeployAction.pipe(
@@ -57,11 +85,10 @@ describe('DeployAction', () => {
     }),
   )
 
-  effect('should succeed in plan mode without changing anything', () =>
+  effect('should log the rendered environment block in plan mode', () =>
     Effect.gen(function* () {
       // Given: plan mode
-      const mode = 'plan'
-      const { layer, steps } = recordingAction({ mode })
+      const { layer, steps } = recordingAction({ inputs: { mode: 'plan' } })
 
       // When: running the action
       yield* DeployAction.pipe(
@@ -69,17 +96,29 @@ describe('DeployAction', () => {
         Effect.provide(layer),
       )
 
-      // Then: it reports an empty plan as information
-      expect(steps.at(-1)?.detail).toContain('Info')
-      expect(steps.at(-1)?.detail).toContain('plan has nothing to compare')
+      // Then: it plans once, then reports the references and the domains
+      expect(steps.map(({ kind }) => kind)).toEqual([
+        'mask',
+        'plan',
+        'log',
+        'log',
+      ])
+      expect(steps[2]?.detail).toContain('rendered the environment block')
+      expect(steps[2]?.detail).toContain('${{vault.demo-prod./demo:MESSAGE}}')
+      expect(steps[3]?.detail).toContain('rendered the domains')
     }),
   )
 
-  effect('should fail in apply mode rather than pass for a deploy', () =>
+  effect('should fail in plan mode when the plan cannot be built', () =>
     Effect.gen(function* () {
-      // Given: apply mode, against a release that cannot apply yet
-      const mode = 'apply'
-      const { layer, steps } = recordingAction({ mode })
+      // Given: a manifest that does not declare the requested environment
+      const failure = UnknownEnvironmentError.notDeclared({
+        environment: 'staging',
+        declared: ['production'],
+      })
+      const { layer, steps } = recordingAction({
+        planner: { plan: Effect.fail(failure) },
+      })
 
       // When: running the action
       const error = yield* Effect.flip(
@@ -89,7 +128,26 @@ describe('DeployAction', () => {
         ),
       )
 
-      // Then: the step fails, after masking the key, and changed nothing
+      // Then: the step fails with the planner's error and logs no plan
+      expect(error).toEqual(failure)
+      expect(steps.map(({ kind }) => kind)).toEqual(['mask', 'plan'])
+    }),
+  )
+
+  effect('should fail in apply mode rather than pass for a deploy', () =>
+    Effect.gen(function* () {
+      // Given: apply mode, against a release that cannot apply yet
+      const { layer, steps } = recordingAction({ inputs: { mode: 'apply' } })
+
+      // When: running the action
+      const error = yield* Effect.flip(
+        DeployAction.pipe(
+          Effect.flatMap(({ run }) => run),
+          Effect.provide(layer),
+        ),
+      )
+
+      // Then: the step fails, after masking the key, without even planning
       expect(error).toEqual(ApplyUnavailableError.inThisRelease())
       expect(steps.map(({ kind }) => kind)).toEqual(['mask'])
     }),

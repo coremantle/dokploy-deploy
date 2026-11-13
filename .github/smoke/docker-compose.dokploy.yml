@@ -1,0 +1,7 @@
+services:
+  hello:
+    image: hashicorp/http-echo:1.0
+    command: ['-listen=:8080', '-text=${GREETING}']
+    environment:
+      MESSAGE: ${MESSAGE}
+      LOG_LEVEL: ${LOG_LEVEL:-info}

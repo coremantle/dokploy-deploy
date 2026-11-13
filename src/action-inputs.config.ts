@@ -1,12 +1,14 @@
 import { Config, Context, Layer, Redacted, Schema } from 'effect'
 
 import { DeployMode } from '#deploy-mode.ts'
+import { isEnvironmentName } from '#manifest/manifest.ts'
 
 export const inputVariables = {
   apiUrl: 'DOKPLOY_DEPLOY_API_URL',
   apiKey: 'DOKPLOY_DEPLOY_API_KEY',
   manifest: 'DOKPLOY_DEPLOY_MANIFEST',
   mode: 'DOKPLOY_DEPLOY_MODE',
+  environment: 'DOKPLOY_DEPLOY_ENVIRONMENT',
 } as const
 
 const ManifestPath = Schema.Trim.check(
@@ -21,6 +23,8 @@ const ApiKey = Schema.Trim.check(
   }),
 )
 
+const EnvironmentName = Schema.Trim.check(isEnvironmentName)
+
 const HttpsUrl = Schema.URLFromString.check(
   Schema.makeFilter((url) => url.protocol === 'https:', {
     message: 'the Dokploy API is only called over https',
@@ -32,6 +36,7 @@ export interface ActionInputsShape {
   readonly apiKey: Redacted.Redacted<string>
   readonly manifest: string
   readonly mode: DeployMode
+  readonly environment: string
 }
 
 export class ActionInputs extends Context.Service<
@@ -48,6 +53,7 @@ export class ActionInputs extends Context.Service<
       ),
       manifest: Config.schema(ManifestPath, inputVariables.manifest),
       mode: Config.schema(DeployMode, inputVariables.mode),
+      environment: Config.schema(EnvironmentName, inputVariables.environment),
     }),
   )
 
@@ -57,6 +63,7 @@ export class ActionInputs extends Context.Service<
       apiKey: Redacted.make('test-dokploy-api-key'),
       manifest: 'deploy/dokploy.yml',
       mode: 'plan',
+      environment: 'production',
       ...shape,
     })
 
