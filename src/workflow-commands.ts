@@ -1,7 +1,48 @@
-import { Console, Context, Effect, Layer, Redacted, pipe } from 'effect'
+import {
+  Console,
+  Context,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Redacted,
+  Schema,
+  pipe,
+} from 'effect'
+
+import { ActionInputs } from '#action-inputs.config.ts'
+import { EffectLog, EffectService } from '#effect/index.ts'
+
+export class WorkflowOutputError extends Schema.TaggedError<WorkflowOutputError>()(
+  'WorkflowOutputError',
+  { path: Schema.String, message: Schema.String },
+) {
+  static unwritable({
+    path,
+    reason,
+  }: {
+    readonly path: string
+    readonly reason: string
+  }): WorkflowOutputError {
+    return new WorkflowOutputError({
+      path,
+      message: `the step outputs could not be written to ${path}: ${reason}`,
+    })
+  }
+}
+
+export type StepOutputs = Readonly<Record<string, string>>
 
 export interface WorkflowCommandsShape {
   readonly mask: (secret: Redacted.Redacted<string>) => Effect.Effect<void>
+  readonly setOutputs: (
+    outputs: StepOutputs,
+  ) => Effect.Effect<void, WorkflowOutputError>
+}
+
+interface WorkflowCommandsDependencies {
+  readonly fileSystem: FileSystem.FileSystem
+  readonly outputFile: Option.Option<string>
 }
 
 export function escapeCommandData(value: string): string {
@@ -11,9 +52,23 @@ export function escapeCommandData(value: string): string {
     .replaceAll('\n', '%0A')
 }
 
+export function outputLines(outputs: StepOutputs): string {
+  return Object.entries(outputs)
+    .map(([name, value]) => `${name}=${value.replaceAll(/[\r\n]+/gu, ' ')}\n`)
+    .join('')
+}
+
 class ConsoleWorkflowCommands implements WorkflowCommandsShape {
-  static make(): ConsoleWorkflowCommands {
-    return new ConsoleWorkflowCommands()
+  private readonly dependencies: WorkflowCommandsDependencies
+
+  private constructor(dependencies: WorkflowCommandsDependencies) {
+    this.dependencies = dependencies
+  }
+
+  static make(
+    dependencies: WorkflowCommandsDependencies,
+  ): ConsoleWorkflowCommands {
+    return new ConsoleWorkflowCommands(dependencies)
   }
 
   mask(secret: Redacted.Redacted<string>) {
@@ -23,15 +78,57 @@ class ConsoleWorkflowCommands implements WorkflowCommandsShape {
       Effect.withSpan('WorkflowCommands.mask'),
     )
   }
+
+  setOutputs(outputs: StepOutputs) {
+    return pipe(
+      this.dependencies.outputFile,
+      Option.match({
+        onNone: () =>
+          EffectLog.info('WorkflowCommands has no output file to write', {
+            outputs,
+          }),
+        onSome: (path) => this.appendOutputs({ path, outputs }),
+      }),
+      Effect.withSpan('WorkflowCommands.setOutputs'),
+    )
+  }
+
+  private appendOutputs({
+    path,
+    outputs,
+  }: {
+    readonly path: string
+    readonly outputs: StepOutputs
+  }) {
+    return pipe(
+      this.dependencies.fileSystem.writeFileString(path, outputLines(outputs), {
+        flag: 'a',
+      }),
+      Effect.mapError((cause) =>
+        WorkflowOutputError.unwritable({ path, reason: cause.message }),
+      ),
+      Effect.withSpan('WorkflowCommands.appendOutputs'),
+    )
+  }
 }
 
 export class WorkflowCommands extends Context.Service<
   WorkflowCommands,
   WorkflowCommandsShape
 >()('dokploy-deploy/WorkflowCommands') {
-  static readonly layer = Layer.succeed(
+  static readonly layer = Layer.effect(
     WorkflowCommands,
-    ConsoleWorkflowCommands.make(),
+    Effect.map(
+      EffectService.all({
+        fileSystem: FileSystem.FileSystem,
+        inputs: ActionInputs,
+      }),
+      ({ fileSystem, inputs }) =>
+        ConsoleWorkflowCommands.make({
+          fileSystem,
+          outputFile: inputs.outputFile,
+        }),
+    ),
   )
 
   static readonly buildTestService = (
@@ -39,6 +136,7 @@ export class WorkflowCommands extends Context.Service<
   ) =>
     WorkflowCommands.of({
       mask: () => Effect.void,
+      setOutputs: () => Effect.void,
       ...shape,
     })
 

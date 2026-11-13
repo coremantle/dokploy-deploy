@@ -3,6 +3,7 @@ import { Effect, Layer, Logger, pipe } from 'effect'
 import { FetchHttpClient } from 'effect/http'
 
 import { ActionInputs } from '#action-inputs.config.ts'
+import { ComposeDeployer } from '#compose-deployer.ts'
 import { DeployAction } from '#deploy-action.ts'
 import { DeploymentApplier } from '#deployment-applier.ts'
 import { DeploymentPlanner } from '#deployment-planner.ts'
@@ -26,14 +27,23 @@ const plannerLayer = DeploymentPlanner.layer.pipe(
 
 const applierLayer = DeploymentApplier.layer.pipe(Layer.provide(dokployLayer))
 
+const deployerLayer = ComposeDeployer.layer.pipe(Layer.provide(dokployLayer))
+
 const commentsLayer = PullRequestComments.layer.pipe(
   Layer.provide(FetchHttpClient.layer),
 )
 
 const actionLayer = Layer.merge(
   DeployAction.layer.pipe(
-    Layer.provide(Layer.mergeAll(plannerLayer, applierLayer, commentsLayer)),
-    Layer.provide(Layer.mergeAll(ActionInputs.layer, WorkflowCommands.layer)),
+    Layer.provide(
+      Layer.mergeAll(plannerLayer, applierLayer, deployerLayer, commentsLayer),
+    ),
+    Layer.provide(
+      WorkflowCommands.layer.pipe(
+        Layer.provide(NodeFileSystem.layer),
+        Layer.provideMerge(ActionInputs.layer),
+      ),
+    ),
   ),
   Logger.layer([Logger.consolePretty({ colors: false })]),
 )

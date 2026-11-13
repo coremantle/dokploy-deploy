@@ -1,8 +1,10 @@
 import { describe, effect, expect } from '@effect/vitest'
 import { Effect, Layer, Logger, Option, Redacted, References } from 'effect'
 
-import { ActionInputs } from '#action-inputs.config.ts'
+import { ActionInputs, testCommit } from '#action-inputs.config.ts'
 import type { ActionInputsShape } from '#action-inputs.config.ts'
+import { ComposeDeployer, DeploymentFailedError } from '#compose-deployer.ts'
+import type { ComposeDeployerShape } from '#compose-deployer.ts'
 import { DeployAction } from '#deploy-action.ts'
 import { DeploymentApplier } from '#deployment-applier.ts'
 import type { DeploymentApplierShape } from '#deployment-applier.ts'
@@ -17,10 +19,17 @@ import {
   PullRequestComments,
 } from '#pull-request-comments.ts'
 import type { PullRequestCommentsShape } from '#pull-request-comments.ts'
-import { WorkflowCommands } from '#workflow-commands.ts'
+import { WorkflowCommands, WorkflowOutputError } from '#workflow-commands.ts'
 
 interface RecordedStep {
-  readonly kind: 'mask' | 'log' | 'plan' | 'apply' | 'comment'
+  readonly kind:
+    | 'mask'
+    | 'log'
+    | 'plan'
+    | 'apply'
+    | 'comment'
+    | 'deploy'
+    | 'outputs'
   readonly detail: string
 }
 
@@ -38,11 +47,15 @@ function recordingAction({
   planner = {},
   applier = {},
   comments = {},
+  deployer = {},
+  outputs = Effect.void,
 }: {
   readonly inputs?: Partial<ActionInputsShape>
   readonly planner?: Partial<DeploymentPlannerShape>
   readonly applier?: Partial<DeploymentApplierShape>
   readonly comments?: Partial<PullRequestCommentsShape>
+  readonly deployer?: Partial<ComposeDeployerShape>
+  readonly outputs?: Effect.Effect<void, WorkflowOutputError>
 }) {
   const steps: Array<RecordedStep> = []
   function record(step: RecordedStep) {
@@ -62,11 +75,24 @@ function recordingAction({
   const testPlanner = DeploymentPlanner.buildTestService(planner)
   const testApplier = DeploymentApplier.buildTestService(applier)
   const testComments = PullRequestComments.buildTestService(comments)
+  const testDeployer = ComposeDeployer.buildTestService(deployer)
   const services = Layer.mergeAll(
     ActionInputs.buildTestLayer(inputs),
     WorkflowCommands.buildTestLayer({
       mask: (secret) =>
         record({ kind: 'mask', detail: Redacted.value(secret) }),
+      setOutputs: (written) =>
+        Effect.andThen(
+          record({ kind: 'outputs', detail: JSON.stringify(written) }),
+          outputs,
+        ),
+    }),
+    ComposeDeployer.buildTestLayer({
+      deploy: (request) =>
+        Effect.andThen(
+          record({ kind: 'deploy', detail: request.composeId }),
+          testDeployer.deploy(request),
+        ),
     }),
     DeploymentPlanner.buildTestLayer({
       plan: Effect.andThen(
@@ -249,9 +275,173 @@ describe('DeployAction', () => {
       // When: running the action
       yield* runAction(layer)
 
-      // Then: the plan is applied once and reported as no change
-      expect(kinds(steps)).toEqual(['mask', 'mask', 'plan', 'apply'])
-      expect(steps.at(-1)?.detail).toContain('changed nothing')
+      // Then: the plan is applied once, reported as no change, then deployed
+      expect(kinds(steps)).toEqual([
+        'mask',
+        'mask',
+        'plan',
+        'apply',
+        'deploy',
+        'outputs',
+      ])
+      const logs = steps.filter(({ kind }) => kind === 'log')
+      expect(
+        logs.some(({ detail }) => detail.includes('changed nothing')),
+      ).toBe(true)
+    }),
+  )
+
+  effect('should write the outputs of the verified deployment', () =>
+    Effect.gen(function* () {
+      // Given: apply mode with the job's commit
+      const { layer, steps } = recordingAction({ inputs: { mode: 'apply' } })
+
+      // When: running the action
+      yield* runAction(layer)
+
+      // Then: the outputs carry the deployment, its status, the verified sha and the duration
+      const outputs = steps.find(({ kind }) => kind === 'outputs')
+      expect(JSON.parse(outputs?.detail ?? '{}')).toEqual({
+        'deployment-id': 'test-deployment-id',
+        status: 'done',
+        sha: testCommit,
+        duration: '12',
+      })
+      expect(steps.at(-1)?.detail).toContain('deployed the expected commit')
+    }),
+  )
+
+  effect(
+    'should leave the sha output empty when the commit is not checked',
+    () =>
+      Effect.gen(function* () {
+        // Given: apply mode with an empty commit input
+        const { layer, steps } = recordingAction({
+          inputs: { mode: 'apply', commit: Option.none() },
+        })
+
+        // When: running the action
+        yield* runAction(layer)
+
+        // Then: no sha is reported, and the log says the commit was not checked
+        const outputs = steps.find(({ kind }) => kind === 'outputs')
+        expect(JSON.parse(outputs?.detail ?? '{}')).toMatchObject({ sha: '' })
+        expect(steps.at(-1)?.detail).toContain('commit not checked')
+      }),
+  )
+
+  effect('should not deploy when deploy is false', () =>
+    Effect.gen(function* () {
+      // Given: apply mode with the deploy turned off
+      const { layer, steps } = recordingAction({
+        inputs: { mode: 'apply', deploy: false },
+      })
+
+      // When: running the action
+      yield* runAction(layer)
+
+      // Then: the plan is applied, nothing is deployed and no output is set
+      expect(kinds(steps)).toEqual(['mask', 'plan', 'apply'])
+      expect(steps.at(-1)?.detail).toContain('deploy is false')
+    }),
+  )
+
+  effect('should write the outputs of a failed deployment, then fail', () =>
+    Effect.gen(function* () {
+      // Given: a deployment Dokploy ends in error
+      const failure = DeploymentFailedError.ended({
+        report: { status: 'error', deploymentId: 'deployment-1', duration: 2 },
+        log: 'Infisical: secret "MISSING" not found at "/demo"',
+      })
+      const { layer, steps } = recordingAction({
+        inputs: { mode: 'apply' },
+        deployer: { deploy: () => Effect.fail(failure) },
+      })
+
+      // When: running the action
+      const error = yield* Effect.flip(runAction(layer))
+
+      // Then: the step fails with the log tail, after setting the outputs
+      expect(error).toEqual(failure)
+      expect(error.message).toContain('Infisical: secret "MISSING" not found')
+      const outputs = steps.find(({ kind }) => kind === 'outputs')
+      expect(JSON.parse(outputs?.detail ?? '{}')).toEqual({
+        'deployment-id': 'deployment-1',
+        status: 'error',
+        sha: '',
+        duration: '2',
+      })
+    }),
+  )
+
+  effect(
+    'should keep the deploy error when the outputs cannot be written',
+    () =>
+      Effect.gen(function* () {
+        // Given: a failed deployment and an output file the step cannot write
+        const failure = DeploymentFailedError.ended({
+          report: { status: 'error', deploymentId: 'deployment-1' },
+          log: 'Infisical: secret "MISSING" not found at "/demo"',
+        })
+        const { layer } = recordingAction({
+          inputs: { mode: 'apply' },
+          deployer: { deploy: () => Effect.fail(failure) },
+          outputs: Effect.fail(
+            WorkflowOutputError.unwritable({
+              path: '/runner/output',
+              reason: 'permission denied',
+            }),
+          ),
+        })
+
+        // When: running the action
+        const error = yield* Effect.flip(runAction(layer))
+
+        // Then: the step fails with the deployment's cause, not the output file's
+        expect(error).toEqual(failure)
+      }),
+  )
+
+  effect(
+    'should stay green when the outputs of a good deploy cannot be written',
+    () =>
+      Effect.gen(function* () {
+        // Given: a verified deployment and an output file the step cannot write
+        const { layer, steps } = recordingAction({
+          inputs: { mode: 'apply' },
+          outputs: Effect.fail(
+            WorkflowOutputError.unwritable({
+              path: '/runner/output',
+              reason: 'permission denied',
+            }),
+          ),
+        })
+
+        // When: running the action
+        yield* runAction(layer)
+
+        // Then: the step succeeds and warns about the outputs
+        const logs = steps.filter(({ kind }) => kind === 'log')
+        expect(
+          logs.some(({ detail }) =>
+            detail.includes('could not write the step outputs'),
+          ),
+        ).toBe(true)
+      }),
+  )
+
+  effect('should never deploy in plan mode', () =>
+    Effect.gen(function* () {
+      // Given: plan mode on a pull request
+      const { layer, steps } = recordingAction({
+        inputs: { mode: 'plan', ...onPullRequest },
+      })
+
+      // When: running the action
+      yield* runAction(layer)
+
+      // Then: nothing is deployed
+      expect(kinds(steps)).not.toContain('deploy')
     }),
   )
 
@@ -263,7 +453,7 @@ describe('DeployAction', () => {
         status: 403,
         dokployMessage: Option.some('Permission denied'),
       })
-      const { layer } = recordingAction({
+      const { layer, steps } = recordingAction({
         inputs: { mode: 'apply' },
         applier: { apply: () => Effect.fail(failure) },
       })
@@ -271,8 +461,9 @@ describe('DeployAction', () => {
       // When: running the action
       const error = yield* Effect.flip(runAction(layer))
 
-      // Then: the step fails with the endpoint, status and message
+      // Then: the step fails with the endpoint, status and message, without deploying
       expect(error).toEqual(failure)
+      expect(kinds(steps)).not.toContain('deploy')
     }),
   )
 })

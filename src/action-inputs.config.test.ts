@@ -1,7 +1,19 @@
 import { describe, effect, expect } from '@effect/vitest'
-import { ConfigProvider, Effect, Exit, Layer, Option, Redacted } from 'effect'
+import {
+  ConfigProvider,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Redacted,
+} from 'effect'
 
-import { ActionInputs, inputVariables } from '#action-inputs.config.ts'
+import {
+  ActionInputs,
+  defaultDeployTimeoutSeconds,
+  inputVariables,
+} from '#action-inputs.config.ts'
 
 const validInputs = {
   [inputVariables.apiUrl]: 'https://dokploy.example.com/api',
@@ -335,6 +347,117 @@ describe('ActionInputs', () => {
       )
 
       // Then: the action fails before reading the manifest
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }),
+  )
+})
+
+const sha = '2F0BE93668D4E0F84DA0E89A01A8A084A743B08B'
+
+describe('ActionInputs of the deploy', () => {
+  effect('should deploy, with the default timeout, when nothing is set', () =>
+    Effect.gen(function* () {
+      // Given: a local run, without the deploy inputs nor an output file
+      const environment = validInputs
+
+      // When: reading the inputs
+      const inputs = yield* ActionInputs.pipe(
+        Effect.provide(layerWithEnvironment(environment)),
+      )
+
+      // Then: apply deploys, without a commit to check, waiting up to the default
+      expect(inputs.deploy).toBe(true)
+      expect(inputs.commit).toEqual(Option.none())
+      expect(Duration.toSeconds(inputs.deployTimeout)).toBe(
+        defaultDeployTimeoutSeconds,
+      )
+      expect(inputs.outputFile).toEqual(Option.none())
+    }),
+  )
+
+  effect('should decode the deploy inputs the composite step passes', () =>
+    Effect.gen(function* () {
+      // Given: a run on a forge with every deploy input set
+      const environment = {
+        ...validInputs,
+        [inputVariables.deploy]: 'false ',
+        [inputVariables.commit]: ` ${sha}`,
+        [inputVariables.deployTimeout]: '600',
+        [inputVariables.outputFile]: '/runner/_temp/output',
+      }
+
+      // When: reading the inputs
+      const inputs = yield* ActionInputs.pipe(
+        Effect.provide(layerWithEnvironment(environment)),
+      )
+
+      // Then: each one is decoded, the commit lowercased
+      expect(inputs.deploy).toBe(false)
+      expect(inputs.commit).toEqual(Option.some(sha.toLowerCase()))
+      expect(Duration.toSeconds(inputs.deployTimeout)).toBe(600)
+      expect(inputs.outputFile).toEqual(Option.some('/runner/_temp/output'))
+    }),
+  )
+
+  effect('should read a blank commit as no commit to check', () =>
+    Effect.gen(function* () {
+      // Given: a caller turning the check off
+      const environment = { ...validInputs, [inputVariables.commit]: '' }
+
+      // When: reading the inputs
+      const inputs = yield* ActionInputs.pipe(
+        Effect.provide(layerWithEnvironment(environment)),
+      )
+
+      // Then: there is no commit
+      expect(inputs.commit).toEqual(Option.none())
+    }),
+  )
+
+  effect('should refuse a short commit sha', () =>
+    Effect.gen(function* () {
+      // Given: an abbreviated sha, which Dokploy never records
+      const environment = { ...validInputs, [inputVariables.commit]: '2f0be93' }
+
+      // When: reading the inputs
+      const outcome = yield* Effect.exit(
+        ActionInputs.pipe(Effect.provide(layerWithEnvironment(environment))),
+      )
+
+      // Then: the action fails before calling Dokploy
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }),
+  )
+
+  effect('should refuse a deploy timeout that is not a positive integer', () =>
+    Effect.gen(function* () {
+      // Given: a timeout written with a unit
+      const environment = {
+        ...validInputs,
+        [inputVariables.deployTimeout]: '10m',
+      }
+
+      // When: reading the inputs
+      const outcome = yield* Effect.exit(
+        ActionInputs.pipe(Effect.provide(layerWithEnvironment(environment))),
+      )
+
+      // Then: the action fails instead of guessing
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }),
+  )
+
+  effect('should refuse a deploy other than true or false', () =>
+    Effect.gen(function* () {
+      // Given: a misspelt switch
+      const environment = { ...validInputs, [inputVariables.deploy]: 'no' }
+
+      // When: reading the inputs
+      const outcome = yield* Effect.exit(
+        ActionInputs.pipe(Effect.provide(layerWithEnvironment(environment))),
+      )
+
+      // Then: the action fails instead of guessing
       expect(Exit.isFailure(outcome)).toBe(true)
     }),
   )

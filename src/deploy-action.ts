@@ -1,7 +1,13 @@
-import { Context, Effect, Layer, Match, Option, pipe } from 'effect'
+import { Cause, Context, Effect, Layer, Match, Option, pipe } from 'effect'
 
 import type { ActionInputsShape } from '#action-inputs.config.ts'
 import { ActionInputs } from '#action-inputs.config.ts'
+import type {
+  ComposeDeployError,
+  ComposeDeployerShape,
+  DeploymentReport,
+} from '#compose-deployer.ts'
+import { ComposeDeployer, reportOfError } from '#compose-deployer.ts'
 import type {
   AppliedChanges,
   DeploymentApplierShape,
@@ -22,13 +28,17 @@ import type {
   PullRequestCommentsShape,
 } from '#pull-request-comments.ts'
 import { PullRequestComments } from '#pull-request-comments.ts'
-import type { WorkflowCommandsShape } from '#workflow-commands.ts'
+import type {
+  WorkflowCommandsShape,
+  WorkflowOutputError,
+} from '#workflow-commands.ts'
 import { WorkflowCommands } from '#workflow-commands.ts'
 
 export type DeployActionError =
   | DeploymentPlanError
   | DeploymentApplyError
   | PullRequestCommentError
+  | ComposeDeployError
 
 export interface DeployActionShape {
   readonly run: Effect.Effect<void, DeployActionError>
@@ -40,6 +50,7 @@ interface DeployActionDependencies {
   readonly planner: DeploymentPlannerShape
   readonly applier: DeploymentApplierShape
   readonly comments: PullRequestCommentsShape
+  readonly deployer: ComposeDeployerShape
 }
 
 function planAnnotations(plan: DeploymentPlan) {
@@ -52,6 +63,15 @@ function planAnnotations(plan: DeploymentPlan) {
     provider: plan.provider,
     folder: plan.folder,
     keys: plan.keys.length,
+  }
+}
+
+export function stepOutputs(report: DeploymentReport) {
+  return {
+    'deployment-id': report.deploymentId ?? '',
+    status: report.status,
+    sha: report.sha ?? '',
+    duration: report.duration === undefined ? '' : String(report.duration),
   }
 }
 
@@ -183,8 +203,57 @@ class ManifestDeployAction implements DeployActionShape {
           { environment: plan.environment, ...applied },
         ),
       ),
-      Effect.asVoid,
+      Effect.andThen(() =>
+        this.dependencies.inputs.deploy
+          ? this.deploy(plan)
+          : EffectLog.info('DeployAction did not deploy: deploy is false', {
+              environment: plan.environment,
+            }),
+      ),
       Effect.withSpan('DeployAction.apply'),
+    )
+  }
+
+  private deploy({ environment, dokploy }: DeploymentPlan) {
+    const { inputs, deployer } = this.dependencies
+    return pipe(
+      deployer.deploy({
+        composeId: dokploy.composeId,
+        commit: inputs.commit,
+        timeout: inputs.deployTimeout,
+      }),
+      Effect.tapError((error) =>
+        Option.match(reportOfError(error), {
+          onNone: () => Effect.void,
+          onSome: (report) => this.writeOutputs(report),
+        }),
+      ),
+      Effect.tap((report) => this.writeOutputs(report)),
+      Effect.tap((report) =>
+        EffectLog.info(
+          report.sha === undefined
+            ? 'DeployAction deployed the compose, commit not checked'
+            : 'DeployAction deployed the expected commit',
+          { environment, compose: dokploy.compose, ...report },
+        ),
+      ),
+      Effect.asVoid,
+      Effect.withSpan('DeployAction.deploy', {
+        attributes: { composeId: dokploy.composeId },
+      }),
+    )
+  }
+
+  private writeOutputs(report: DeploymentReport) {
+    return pipe(
+      this.dependencies.workflowCommands.setOutputs(stepOutputs(report)),
+      // Why: the outputs only report what happened in Dokploy; failing on them would turn a good deployment red, or hide why a bad one failed.
+      Effect.catch((error: WorkflowOutputError) =>
+        EffectLog.warning('DeployAction could not write the step outputs', {
+          cause: Cause.fail(error),
+        }),
+      ),
+      Effect.withSpan('DeployAction.writeOutputs'),
     )
   }
 }
@@ -202,6 +271,7 @@ export class DeployAction extends Context.Service<
         planner: DeploymentPlanner,
         applier: DeploymentApplier,
         comments: PullRequestComments,
+        deployer: ComposeDeployer,
       }),
       (dependencies) => ManifestDeployAction.make(dependencies),
     ),

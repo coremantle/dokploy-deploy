@@ -14,7 +14,7 @@ inputs:
     required: false
     default: deploy/dokploy.yml
   mode:
-    description: "`plan` reads the manifest and Dokploy and reports what would change, without writing to Dokploy (on a pull request it also comments that report); `apply` writes the changes: the environment block when it differs, then the domains of the compose."
+    description: "`plan` reads the manifest and Dokploy and reports what would change, without writing to Dokploy (on a pull request it also comments that report); `apply` writes the changes (the environment block when it differs, then the domains of the compose), then deploys the compose and waits for the result."
     required: false
     default: plan
   environment:
@@ -29,11 +29,38 @@ inputs:
     description: "`true` posts the plan as one comment on the pull request, updated on each run; `false` only logs it. Only `plan` on a pull request event comments."
     required: false
     default: "true"
+  deploy:
+    description: "`true`: `apply` deploys the compose after writing the changes and waits for the result; `false`: `apply` only writes the environment block and the domains."
+    required: false
+    default: "true"
+  commit:
+    description: "Full sha of the commit the deployment must have deployed; the step fails when Dokploy deployed another one or recorded none. The job's commit by default (on a pull_request event, pass the head sha instead of the merge commit); an empty string deploys without the check (the `sha` output then stays empty)."
+    required: false
+    default: ${{ github.sha }}
+  deploy-timeout:
+    description: Seconds to wait for the deployment to end once requested, Dokploy's queue included (it is shared by every project); the commit read afterwards adds up to 30 seconds.
+    required: false
+    default: "1800"
+
+outputs:
+  deployment-id:
+    description: Id of the Dokploy deployment `apply` started; empty when it did not deploy or Dokploy never picked the request up.
+    value: ${{ steps.dokploy-deploy.outputs.deployment-id }}
+  status:
+    description: "Status of that deployment: `done`, `error`, `cancelled`, `running` (timed out while running) or `queued` (timed out before Dokploy picked it up)."
+    value: ${{ steps.dokploy-deploy.outputs.status }}
+  sha:
+    description: The deployed commit, set only when it was verified to equal the `commit` input.
+    value: ${{ steps.dokploy-deploy.outputs.sha }}
+  duration:
+    description: Seconds the deployment ran in Dokploy (start to end, queue excluded); empty while it has not ended.
+    value: ${{ steps.dokploy-deploy.outputs.duration }}
 
 runs:
   using: composite
   steps:
     - name: Run dokploy-deploy
+      id: dokploy-deploy
       # Why: `sh`, not `bash` — slim job images (alpine) ship no bash, and the step needs nothing beyond POSIX.
       shell: sh
       env:
@@ -44,6 +71,9 @@ runs:
         DOKPLOY_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
         DOKPLOY_DEPLOY_TOKEN: ${{ inputs.token }}
         DOKPLOY_DEPLOY_PR_COMMENT: ${{ inputs.pr-comment }}
+        DOKPLOY_DEPLOY_DEPLOY: ${{ inputs.deploy }}
+        DOKPLOY_DEPLOY_COMMIT: ${{ inputs.commit }}
+        DOKPLOY_DEPLOY_DEPLOY_TIMEOUT: ${{ inputs.deploy-timeout }}
         # Why: GitHub always sets github.api_url; the fallback is Forgejo's API under its server URL, should a runner leave it empty.
         DOKPLOY_DEPLOY_FORGE_API_URL: ${{ github.api_url || format('{0}/api/v1', github.server_url) }}
         DOKPLOY_DEPLOY_REPOSITORY: ${{ github.repository }}

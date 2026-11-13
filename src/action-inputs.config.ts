@@ -1,4 +1,12 @@
-import { Config, Context, Layer, Option, Redacted, Schema } from 'effect'
+import {
+  Config,
+  Context,
+  Duration,
+  Layer,
+  Option,
+  Redacted,
+  Schema,
+} from 'effect'
 
 import { DeployMode } from '#deploy-mode.ts'
 import { isEnvironmentName } from '#manifest/manifest.ts'
@@ -14,7 +22,15 @@ export const inputVariables = {
   forgeApiUrl: 'DOKPLOY_DEPLOY_FORGE_API_URL',
   repository: 'DOKPLOY_DEPLOY_REPOSITORY',
   pullRequest: 'DOKPLOY_DEPLOY_PULL_REQUEST',
+  deploy: 'DOKPLOY_DEPLOY_DEPLOY',
+  commit: 'DOKPLOY_DEPLOY_COMMIT',
+  deployTimeout: 'DOKPLOY_DEPLOY_DEPLOY_TIMEOUT',
+  outputFile: 'GITHUB_OUTPUT',
 } as const
+
+export const defaultDeployTimeoutSeconds = 1800
+
+export const testCommit = '0123456789abcdef0123456789abcdef01234567'
 
 const ManifestPath = Schema.Trim.check(
   Schema.isPattern(/^[^\p{Cc}]+$/u, {
@@ -42,11 +58,26 @@ const ForgeToken = Schema.Trim.check(
   }),
 )
 
-const PrComment = Schema.Trim.check(
-  Schema.isPattern(/^(?:true|false)$/u, {
-    message: 'pr-comment is true or false',
+function toggle(name: string) {
+  return Schema.Trim.check(
+    Schema.isPattern(/^(?:true|false)$/u, {
+      message: `${name} is true or false`,
+    }),
+  )
+}
+
+const Commit = Schema.Trim.check(
+  Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu, {
+    message: 'a commit is a full 40- or 64-character hexadecimal sha',
   }),
 )
+
+const TimeoutSeconds = Schema.NumberFromString.check(
+  Schema.isInt(),
+  Schema.isGreaterThan(0),
+)
+
+const OutputFile = Schema.Trim.check(Schema.isMinLength(1))
 
 const Repository = Schema.Trim.check(
   Schema.isPattern(/^[\w.-]+\/[\w.-]+$/u, {
@@ -89,6 +120,10 @@ export interface ActionInputsShape {
   readonly token: Option.Option<Redacted.Redacted<string>>
   readonly prComment: boolean
   readonly forge: ForgeContext
+  readonly deploy: boolean
+  readonly commit: Option.Option<string>
+  readonly deployTimeout: Duration.Duration
+  readonly outputFile: Option.Option<string>
 }
 
 export class ActionInputs extends Context.Service<
@@ -110,10 +145,32 @@ export class ActionInputs extends Context.Service<
         schema: Schema.RedactedFromValue(ForgeToken),
         name: inputVariables.token,
       }),
-      prComment: Config.schema(PrComment, inputVariables.prComment).pipe(
+      prComment: Config.schema(
+        toggle('pr-comment'),
+        inputVariables.prComment,
+      ).pipe(
         Config.withDefault('true'),
         Config.map((value) => value === 'true'),
       ),
+      deploy: Config.schema(toggle('deploy'), inputVariables.deploy).pipe(
+        Config.withDefault('true'),
+        Config.map((value) => value === 'true'),
+      ),
+      commit: optionalInput({
+        schema: Commit,
+        name: inputVariables.commit,
+      }).pipe(Config.map(Option.map((sha) => sha.toLowerCase()))),
+      deployTimeout: Config.schema(
+        TimeoutSeconds,
+        inputVariables.deployTimeout,
+      ).pipe(
+        Config.withDefault(defaultDeployTimeoutSeconds),
+        Config.map((seconds) => Duration.seconds(seconds)),
+      ),
+      outputFile: optionalInput({
+        schema: OutputFile,
+        name: inputVariables.outputFile,
+      }),
       forge: Config.all({
         apiUrl: optionalInput({
           schema: Schema.URLFromString,
@@ -145,6 +202,10 @@ export class ActionInputs extends Context.Service<
         repository: Option.none(),
         pullRequest: Option.none(),
       },
+      deploy: true,
+      commit: Option.some(testCommit),
+      deployTimeout: Duration.seconds(defaultDeployTimeoutSeconds),
+      outputFile: Option.none(),
       ...shape,
     })
 

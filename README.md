@@ -5,12 +5,12 @@ A Forgejo/GitHub action through which an application deploys **itself** to
 applies its own deployment — environment as secret references, domains, then
 the deploy — with an API key scoped to its Dokploy project.
 
-> **Status — before `v1`.** On `main`, `plan` diffs the [manifest](#manifest)
-> against the compose in Dokploy and reports it (as a pull request comment on
-> pull requests), and `apply` [converges](#what-apply-writes) the environment
-> block and the domains. The deploy itself arrives in a later release. The
-> `v0` tag is still the read-only `v0.1.0`, where `apply` fails without
-> touching Dokploy; `v1` is the first tag that acts on Dokploy.
+> **Status — `v1`.** `plan` diffs the [manifest](#manifest) against the
+> compose in Dokploy and reports it (as a pull request comment on pull
+> requests); `apply` [converges](#what-apply-writes) the environment block and
+> the domains, then [deploys](#the-deploy) the compose and fails the job unless
+> Dokploy deployed the job's commit. `v1` is the first tag that acts on
+> Dokploy; `v0` stays on the read-only `v0.1.0`.
 
 ## Usage
 
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: https://github.com/coremantle/dokploy-deploy@v1
         with:
-          api-url: https://dokploy.example.com/api
+          api-url: ${{ vars.DOKPLOY_API_URL }} # e.g. https://dokploy.example.com/api
           api-key: ${{ secrets.DOKPLOY_API_KEY }}
           environment: production
           mode: plan
@@ -36,19 +36,26 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: ci
     runs-on: ubuntu-latest
+    concurrency: deploy-production # one deploy at a time; a running one is never cancelled
     steps:
       - uses: actions/checkout@v7
-      - uses: https://github.com/coremantle/dokploy-deploy@v1
+      - id: deploy
+        uses: https://github.com/coremantle/dokploy-deploy@v1
         with:
-          api-url: https://dokploy.example.com/api
+          api-url: ${{ vars.DOKPLOY_API_URL }}
           api-key: ${{ secrets.DOKPLOY_API_KEY }}
           environment: production
           mode: apply
+      - run: echo "deployed ${{ steps.deploy.outputs.sha }} in ${{ steps.deploy.outputs.duration }} s"
 ```
 
+`api-url` has no default: the action is not tied to one Dokploy. Keep it in a
+repository (or organization) variable such as `DOKPLOY_API_URL`, next to the
+`DOKPLOY_API_KEY` secret.
+
 On GitHub, `uses: coremantle/dokploy-deploy@v1` works too; the full URL is
-what Forgejo needs. Pin the **major tag** and let Renovate bump it. Until `v1`
-is tagged, `@v0` only plans, without the diff or the comment.
+what Forgejo needs. Pin the **major tag** and let Renovate bump it. `@v0`
+only plans, without the diff or the comment.
 
 The action is **composite**: it runs `node` on a bundled entry point
 (`dist/index.mjs`) committed with each release, so the calling job installs
@@ -57,21 +64,39 @@ nothing. The runner — or the job's container image — must provide **Node.js
 
 ## Inputs
 
-| Input         | Required | Default               | Description                                                                                                 |
-| ------------- | -------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `api-url`     | yes      | —                     | Base URL of the Dokploy API, e.g. `https://dokploy.example.com/api`.                                        |
-| `api-key`     | yes      | —                     | API key of a Dokploy member scoped to the project. Pass it from a secret.                                   |
-| `manifest`    | no       | `deploy/dokploy.yml`  | Path of the deployment manifest, relative to the workspace.                                                 |
-| `environment` | no       | `production`          | Key of the manifest's `environments` to plan or deploy.                                                     |
-| `mode`        | no       | `plan`                | `plan` reads Dokploy and reports the changes, writing nothing to Dokploy; `apply` makes them.               |
-| `token`       | no       | `${{ github.token }}` | Token that comments the plan on the pull request. Masked in the log.                                        |
-| `pr-comment`  | no       | `true`                | `true`: `plan` on a pull request posts its report as one comment, edited on each run. `false`: log it only. |
+| Input            | Required | Default               | Description                                                                                                 |
+| ---------------- | -------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `api-url`        | yes      | —                     | Base URL of the Dokploy API, e.g. `https://dokploy.example.com/api`.                                        |
+| `api-key`        | yes      | —                     | API key of a Dokploy member scoped to the project. Pass it from a secret.                                   |
+| `manifest`       | no       | `deploy/dokploy.yml`  | Path of the deployment manifest, relative to the workspace.                                                 |
+| `environment`    | no       | `production`          | Key of the manifest's `environments` to plan or deploy.                                                     |
+| `mode`           | no       | `plan`                | `plan` reads Dokploy and reports the changes, writing nothing to Dokploy; `apply` makes them.               |
+| `token`          | no       | `${{ github.token }}` | Token that comments the plan on the pull request. Masked in the log.                                        |
+| `pr-comment`     | no       | `true`                | `true`: `plan` on a pull request posts its report as one comment, edited on each run. `false`: log it only. |
+| `deploy`         | no       | `true`                | `true`: `apply` deploys the compose after writing the changes and waits for the result. `false`: no deploy. |
+| `commit`         | no       | `${{ github.sha }}`   | Full sha the deployment must have deployed. Empty: deploy without the check (the `sha` output stays empty). |
+| `deploy-timeout` | no       | `1800`                | Seconds to wait for the deployment to end once requested, Dokploy's queue included.                         |
 
 Every input is trimmed, then validated before anything runs: a URL that is
 not `https`, a blank key or one with spaces or line breaks inside, a manifest
 path spanning several lines, an environment that is not a lowercase name, a
-mode other than `plan` / `apply`, or a `pr-comment` other than `true` /
-`false` fails the step.
+mode other than `plan` / `apply`, a `pr-comment` or `deploy` other than
+`true` / `false`, a `commit` that is not a full 40- or 64-character sha, or a
+`deploy-timeout` that is not a positive number of seconds fails the step.
+
+## Outputs
+
+Set by `apply` when it deploys (`deploy: true`), also when the deployment
+fails, times out or can no longer be followed, so a later `if: failure()`
+step can read them. Empty otherwise. An output file the step cannot write
+only logs a warning: the step's result is the deployment's.
+
+| Output          | Meaning                                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deployment-id` | Id of the Dokploy deployment the action started. Empty if Dokploy never picked the request up before the timeout.                                     |
+| `status`        | `done`, `error` or `cancelled` (Dokploy's final status); `running` or `queued` when the action timed out while the deployment ran or still waited.    |
+| `sha`           | The deployed commit, **only when the action verified it equals `commit`**. Empty when the check is off, failed, or the deployment did not end `done`. |
+| `duration`      | Seconds the deployment ran in Dokploy, from its start to its end (queue excluded). Empty while it has not ended.                                      |
 
 ### The plan comment
 
@@ -99,7 +124,7 @@ The application describes its deployment in `deploy/dokploy.yml` (the
 repository; point your editor at the major tag you pin:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/coremantle/dokploy-deploy/v0/manifest.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/coremantle/dokploy-deploy/v1/manifest.schema.json
 version: 1
 composeFile: docker-compose.dokploy.yml
 
@@ -195,20 +220,79 @@ names (added, changed, removed), never a current value.
    compose**. A failed create thus never leaves a compose without its old
    route.
 
+6. deploys the compose, unless `deploy: false` — see [the deploy](#the-deploy).
+
 Settings the manifest does not express (internal path, strip path,
 middlewares, custom certificate resolver) are left as they are on a domain
 that is kept. The manifest cannot name a custom certificate resolver yet: a
 `certificateType: custom` domain is created without one (Dokploy accepts it),
 so set the resolver in Dokploy afterwards; `apply` keeps it.
 
-Run twice with the same manifest, `apply` writes nothing the second time. The
-first Dokploy error stops it and fails the step with the endpoint, the status
-and Dokploy's message; the writes already made stay. Compose env and domains
-take effect on the compose's next deploy.
+Run twice with the same manifest, `apply` writes no env and no domain the
+second time; it still deploys again (see below). The first Dokploy error
+stops it and fails the step with the endpoint, the status and Dokploy's
+message; the writes already made stay. Compose env and domains take effect on
+the deploy that follows.
 
-The key's member needs, on the compose: read access, `envVars: write`, and
+The key's member needs, on the compose: read access, `envVars: write`,
 `domain: read`, `create` (Dokploy also checks it for `domain.update`) and
-`delete`.
+`delete`, and `deployment: create` and `read`. Create the key with
+`rateLimitEnabled: false`: a deploy polls Dokploy every 5 seconds, far beyond
+the default limit of a Dokploy API key (10 requests a day).
+
+### The deploy
+
+After the writes, `apply` deploys the compose and waits for the result; the
+job is green only when Dokploy deployed **the job's commit**:
+
+1. it lists the compose's deployments (`deployment.allByCompose`), then asks
+   for a deploy (`compose.deploy`);
+2. it polls the deployments every 5 seconds: its deployment is the first one
+   that was not there before the request. Dokploy runs deployments **one at
+   a time for the whole instance**, so it may wait minutes in the queue
+   behind other projects' deploys — `deploy-timeout` (30 minutes by default)
+   covers the queue and the build; a poll that fails on a network error, a
+   timeout, a 429 or a 5xx is retried up to 3 times; any other Dokploy error
+   fails the step, still reporting the deployment last seen;
+3. on `error`, `cancelled` (or any other final status a later Dokploy may
+   add), it fails the step with the last 50 lines of the deployment log
+   (`deployment.readLogs`), each prefixed with `| ` — Dokploy leaves
+   `errorMessage` empty, the cause is only there, e.g.
+   `Infisical: secret "X" not found at "/my-app" in environment "prod"`;
+4. on `done`, it reads the commit Dokploy recorded for the deployment (the
+   deployment's `Commit: <sha>`, which Dokploy writes a moment after marking
+   it done — the action waits up to 30 seconds for it) and fails the step
+   unless it equals the `commit` input. This catches a compose whose branch
+   moved on (a newer push), points at another branch, or clones a source
+   lagging behind. Dokploy only records a commit for a **git-based** compose
+   (Git, GitHub, GitLab, Bitbucket, Gitea sources): for a raw compose, set
+   `commit: ''` — the step then reports no `sha`, never one it did not check.
+
+On timeout the step fails but the deployment goes on in Dokploy: the action
+cannot cancel it. The commit read after `done` and the requests themselves
+come on top of `deploy-timeout` (about a minute at most).
+
+Running `apply` again deploys again, even when nothing changed: re-running
+the latest job redeploys the same commit, which is how a secret rotated in
+Infisical reaches the running service (Dokploy resolves the references at
+each deploy). **Dokploy always deploys the head of the compose's branch**, it
+cannot pin a commit: re-running an _older_ job after the branch moved writes
+that job's env and domains, deploys the newer head, then fails on the commit
+check — re-run the latest job instead, or guard the job with a check that its
+commit is still the branch head.
+
+Give the job a `concurrency` group per environment, never cancelled, so two
+deploys of the same compose do not overlap: the action tells its deployment
+apart from one started before its request, not from one requested at the
+same time (the commit check still catches one that deployed another commit).
+Keep the compose's auto-deploy off (babel's `owner: app` does), so nothing
+else starts deployments behind the job's back. A request left in the queue by a job that
+timed out still runs later, and the next job may take it for its own — the
+commit check then decides, as it compares what was actually deployed.
+
+`commit` defaults to `github.sha`, the pushed commit on a `push`. On a
+`pull_request` event that is a merge commit Dokploy never deploys: pass
+`commit: ${{ github.event.pull_request.head.sha }}` there.
 
 ## Threat model
 
@@ -228,6 +312,11 @@ The key's member needs, on the compose: read access, `envVars: write`, and
   application at another one's secrets. It does
   not stop a determined author: the application's compose already runs with
   root-equivalent access to its host.
+- **A failed deploy prints the end of its log.** The last 50 lines of the
+  Dokploy deployment log go to the job log, as Dokploy shows them to anyone
+  who can read the compose's deployments: Dokploy's own lines name missing
+  keys, never values, but what the compose's build prints is up to the
+  application — do not print secrets there.
 - **This repository is public.** It holds no secret and no internal host name;
   host names in this README are examples.
 
@@ -257,11 +346,11 @@ Semver tags plus a moving major tag. Callers pin the major tag (`@v0`, later
 ```sh
 git switch main && git pull
 pnpm install --frozen-lockfile && pnpm build:check   # dist/ is up to date
-git tag -a v0.1.0 -m "v0.1.0"
-git tag -f -a v0 -m "v0 → v0.1.0"
-git push origin v0.1.0
-git push -f origin v0
-gh release create v0.1.0 --generate-notes
+git tag -a v1.0.0 -m "v1.0.0"
+git tag -f -a v1 -m "v1 → v1.0.0"
+git push origin v1.0.0
+git push -f origin v1
+gh release create v1.0.0 --generate-notes
 ```
 
 A breaking change to the inputs, outputs or behaviour bumps the major version
@@ -270,9 +359,11 @@ and starts a new major tag; the previous one stays where it was.
 ### Trying `plan` and `apply` without a Dokploy
 
 CI's `smoke` job plans `.github/smoke/dokploy.yml`, applies it twice and
-checks that the second `apply` writes nothing, against
-`.github/smoke/fake-dokploy.mjs`: a fake Dokploy over https with a throwaway
-certificate, which answers the reads and keeps the writes in memory. The same
+checks that each `apply` deploys the job's commit and that the second one
+writes nothing else, against `.github/smoke/fake-dokploy.mjs`: a fake Dokploy
+over https with a throwaway certificate, which answers the reads, keeps the
+writes in memory and runs a deployment in two seconds (its last argument is
+the commit it records). The same
 works locally (switch `DOKPLOY_DEPLOY_MODE` to `apply`):
 
 ```sh
