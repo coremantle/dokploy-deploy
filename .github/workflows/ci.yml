@@ -83,8 +83,44 @@ jobs:
           api-key: smoke-test-key-not-a-secret
           manifest: .github/smoke/dokploy.yml
           mode: plan
+          # Why: this job's token is read-only; the comment itself is covered by the unit tests.
+          pr-comment: 'false'
 
-      - name: The plan read the secret names through Dokploy
+      - name: The plan read Dokploy and wrote nothing
         run: |
           cat "$RUNNER_TEMP/fake-dokploy.log"
           grep -q 'GET /api/vaultProvider.listSecretNames -> 200' "$RUNNER_TEMP/fake-dokploy.log"
+          grep -q 'GET /api/domain.byComposeId -> 200' "$RUNNER_TEMP/fake-dokploy.log"
+          ! grep -q '^POST ' "$RUNNER_TEMP/fake-dokploy.log"
+
+      - name: Apply through the action
+        uses: ./
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
+        with:
+          api-url: https://localhost:8443/api
+          api-key: smoke-test-key-not-a-secret
+          manifest: .github/smoke/dokploy.yml
+          mode: apply
+
+      - name: The apply converged the env and the domains
+        run: |
+          cat "$RUNNER_TEMP/fake-dokploy.log"
+          grep -q 'POST /api/compose.saveEnvironment -> 200' "$RUNNER_TEMP/fake-dokploy.log"
+          grep -q 'POST /api/domain.delete -> 200' "$RUNNER_TEMP/fake-dokploy.log"
+          grep -q 'POST /api/domain.create -> 200' "$RUNNER_TEMP/fake-dokploy.log"
+          grep -c '^POST ' "$RUNNER_TEMP/fake-dokploy.log" > "$RUNNER_TEMP/writes-after-first-apply"
+
+      - name: Apply a second time
+        uses: ./
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
+        with:
+          api-url: https://localhost:8443/api
+          api-key: smoke-test-key-not-a-secret
+          manifest: .github/smoke/dokploy.yml
+          mode: apply
+
+      - name: The second apply wrote nothing
+        run: |
+          test "$(grep -c '^POST ' "$RUNNER_TEMP/fake-dokploy.log")" = "$(cat "$RUNNER_TEMP/writes-after-first-apply")"

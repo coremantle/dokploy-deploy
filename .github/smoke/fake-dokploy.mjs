@@ -4,8 +4,26 @@ import { createServer } from 'node:https'
 const [certificatePath, keyPath, port = '8443'] = process.argv.slice(2)
 const expectedKey = 'smoke-test-key-not-a-secret'
 
-const answers = {
-  '/api/project.all': [
+const compose = {
+  env: 'MESSAGE=typed-by-hand\nLEGACY=1\n',
+  domains: [
+    {
+      domainId: 'domain-legacy',
+      host: 'legacy.smoke.example.com',
+      path: '/',
+      port: 8080,
+      serviceName: 'hello',
+      https: true,
+      certificateType: 'letsencrypt',
+      domainType: 'compose',
+    },
+  ],
+}
+
+let nextDomain = 1
+
+const reads = {
+  '/api/project.all': () => [
     {
       projectId: 'project-smoke',
       name: 'Smoke',
@@ -18,7 +36,7 @@ const answers = {
       ],
     },
   ],
-  '/api/vaultProvider.all': [
+  '/api/vaultProvider.all': () => [
     {
       vaultProviderId: 'provider-smoke',
       name: 'infisical-smoke',
@@ -26,26 +44,71 @@ const answers = {
       config: { providerType: 'infisical', secretPath: '/smoke/hello' },
     },
   ],
-  '/api/vaultProvider.listSecretNames': ['MESSAGE', 'GREETING'],
+  '/api/vaultProvider.listSecretNames': () => ['MESSAGE', 'GREETING'],
+  '/api/compose.one': () => ({
+    composeId: 'compose-hello',
+    name: 'hello',
+    env: compose.env,
+  }),
+  '/api/domain.byComposeId': () => compose.domains,
 }
 
-function answer(request, response) {
+const writes = {
+  '/api/compose.saveEnvironment': ({ env }) => {
+    compose.env = env
+    return true
+  },
+  '/api/domain.create': (domain) => {
+    const created = { ...domain, domainId: `domain-${nextDomain++}` }
+    compose.domains.push(created)
+    return created
+  },
+  '/api/domain.update': (domain) => {
+    compose.domains = compose.domains.map((current) =>
+      current.domainId === domain.domainId ? { ...current, ...domain } : current,
+    )
+    return true
+  },
+  '/api/domain.delete': ({ domainId }) => {
+    compose.domains = compose.domains.filter(
+      (current) => current.domainId !== domainId,
+    )
+    return true
+  },
+}
+
+function reply({ response, status, body }) {
+  response.writeHead(status, { 'content-type': 'application/json' })
+  response.end(JSON.stringify(body))
+}
+
+function answer({ request, response, rawBody }) {
   const { pathname } = new URL(request.url ?? '/', 'https://localhost')
-  const body =
-    request.headers['x-api-key'] === expectedKey
-      ? answers[pathname]
-      : undefined
-  const status = request.headers['x-api-key'] === expectedKey ? 200 : 401
-  response.writeHead(body === undefined && status === 200 ? 404 : status, {
-    'content-type': 'application/json',
-  })
-  response.end(JSON.stringify(body ?? { message: 'Unauthorized' }))
+  const handlers = request.method === 'POST' ? writes : reads
+  const handler = handlers[pathname]
+  if (request.headers['x-api-key'] !== expectedKey) {
+    reply({ response, status: 401, body: { message: 'Unauthorized' } })
+  } else if (handler === undefined) {
+    reply({ response, status: 404, body: { message: 'Not found' } })
+  } else {
+    reply({
+      response,
+      status: 200,
+      body: handler(rawBody === '' ? {} : JSON.parse(rawBody)),
+    })
+  }
   console.log(`${request.method} ${pathname} -> ${response.statusCode}`)
 }
 
 createServer(
   { cert: readFileSync(certificatePath), key: readFileSync(keyPath) },
-  answer,
+  (request, response) => {
+    let rawBody = ''
+    request.on('data', (chunk) => {
+      rawBody += chunk
+    })
+    request.on('end', () => answer({ request, response, rawBody }))
+  },
 ).listen(Number(port), 'localhost', () => {
   console.log(`fake Dokploy listening on https://localhost:${port}/api`)
 })

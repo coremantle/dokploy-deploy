@@ -8,6 +8,7 @@ import {
   UnknownEnvironmentError,
 } from '#deployment-planner.ts'
 import type {
+  DokployDomain,
   DokployProject,
   SecretNamesQuery,
   VaultProvider,
@@ -74,6 +75,8 @@ interface FakeWorld {
   readonly compose?: ComposeFile
   readonly keys?: ReadonlyArray<string>
   readonly environment?: string
+  readonly currentEnv?: string
+  readonly currentDomains?: ReadonlyArray<DokployDomain>
 }
 
 function plannerIn({
@@ -81,6 +84,8 @@ function plannerIn({
   compose = demoCompose,
   keys = ['MESSAGE', 'DEMO_IMPORTED', 'DEMO_MESSAGE'],
   environment = 'production',
+  currentEnv = '',
+  currentDomains = [],
 }: FakeWorld) {
   const dokployCalls: Array<string> = []
   const queries: Array<SecretNamesQuery> = []
@@ -106,6 +111,16 @@ function plannerIn({
               dokployCalls.push('vaultProvider.listSecretNames')
               queries.push(query)
               return keys
+            }),
+          composeEnv: (composeId) =>
+            Effect.sync(() => {
+              dokployCalls.push(`compose.one ${composeId}`)
+              return currentEnv
+            }),
+          composeDomains: (composeId) =>
+            Effect.sync(() => {
+              dokployCalls.push(`domain.byComposeId ${composeId}`)
+              return currentDomains
             }),
         }),
       ),
@@ -152,6 +167,88 @@ describe('DeploymentPlanner', () => {
           environmentId: 'environment-production',
         },
       ])
+    }),
+  )
+
+  effect('should diff the plan against the compose in Dokploy', () =>
+    Effect.gen(function* () {
+      // Given: Dokploy holding a hand-typed env and a domain the manifest dropped
+      const { layer, dokployCalls } = plannerIn({
+        keys: ['MESSAGE'],
+        currentEnv: 'MESSAGE=literal-value\nOLD=1\n',
+        currentDomains: [
+          {
+            domainId: 'domain-old',
+            host: 'old.demo.example.com',
+            path: '/',
+            port: 8080,
+            serviceName: 'hello',
+            https: true,
+            certificateType: 'letsencrypt',
+          },
+        ],
+      })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: the changes name keys and routes, read from the resolved compose
+      expect(plan.changes.env).toEqual({
+        drift: true,
+        added: [],
+        changed: ['MESSAGE'],
+        removed: ['OLD'],
+      })
+      expect(plan.changes.domains.create.map(({ host }) => host)).toEqual([
+        'hello.demo.example.com',
+      ])
+      expect(
+        plan.changes.domains.delete.map(({ domainId }) => domainId),
+      ).toEqual(['domain-old'])
+      expect(dokployCalls).toContain('compose.one compose-hello')
+      expect(dokployCalls).toContain('domain.byComposeId compose-hello')
+      expect(plan.unsupported).toEqual([])
+    }),
+  )
+
+  effect('should find no change once Dokploy holds the plan', () =>
+    Effect.gen(function* () {
+      // Given: a first plan, and Dokploy holding exactly what it would write
+      const first = yield* planWith(plannerIn({ keys: ['MESSAGE'] }).layer)
+      const { layer } = plannerIn({
+        keys: ['MESSAGE'],
+        currentEnv: first.env,
+        currentDomains: first.domains.map((domain, index) => ({
+          ...domain,
+          domainId: `domain-${index}`,
+        })),
+      })
+
+      // When: planning again
+      const plan = yield* planWith(layer)
+
+      // Then: nothing would be written
+      expect(plan.changes.env.drift).toBe(false)
+      expect(plan.changes.domains.create).toEqual([])
+      expect(plan.changes.domains.update).toEqual([])
+      expect(plan.changes.domains.delete).toEqual([])
+    }),
+  )
+
+  effect('should report the routes that set allowedMethods', () =>
+    Effect.gen(function* () {
+      // Given: a domain restricting its methods
+      const manifest: Manifest = {
+        ...demoManifest,
+        domains: [{ ...demoManifest.domains[0], allowedMethods: ['GET'] }],
+      }
+      const { layer } = plannerIn({ manifest })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: the route is reported as unsupported
+      expect(plan.unsupported).toEqual(['hello.demo.example.com/'])
     }),
   )
 

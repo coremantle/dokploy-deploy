@@ -1,5 +1,6 @@
 import { Array, Effect, Schema, pipe } from 'effect'
 
+import { routeOf } from '#domains/domain-diff.ts'
 import type {
   CertificateType,
   HttpMethod,
@@ -51,6 +52,30 @@ export class DuplicateDomainError extends Schema.TaggedError<DuplicateDomainErro
   }
 }
 
+export class UnsupportedAllowedMethodsError extends Schema.TaggedError<UnsupportedAllowedMethodsError>()(
+  'UnsupportedAllowedMethodsError',
+  { routes: Schema.Array(Schema.String), message: Schema.String },
+) {
+  static forRoutes(
+    routes: ReadonlyArray<string>,
+  ): UnsupportedAllowedMethodsError {
+    return new UnsupportedAllowedMethodsError({
+      routes,
+      message: `domains[].allowedMethods is set on ${routes.join(', ')}, but Dokploy's domain API has no such setting: apply cannot enforce it, so it changed nothing; remove allowedMethods from the manifest`,
+    })
+  }
+}
+
+export function routesWithAllowedMethods(
+  domains: ReadonlyArray<DesiredDomain>,
+): ReadonlyArray<string> {
+  return pipe(
+    domains,
+    Array.filter(({ allowedMethods }) => allowedMethods !== undefined),
+    Array.map(routeOf),
+  )
+}
+
 function desiredDomain({
   domain,
   parentDomain,
@@ -65,10 +90,6 @@ function desiredDomain({
     ...routing,
     ...(allowedMethods === undefined ? {} : { allowedMethods }),
   }
-}
-
-function routeOf({ host, path }: DesiredDomain) {
-  return `${host}${path}`
 }
 
 function duplicatedRoutes(domains: ReadonlyArray<DesiredDomain>) {

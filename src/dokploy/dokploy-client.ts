@@ -35,6 +35,22 @@ export const VaultProvider = Schema.Struct({
 
 export type VaultProvider = typeof VaultProvider.Type
 
+export const DokployComposeEnv = Schema.Struct({
+  env: Schema.NullOr(Schema.String),
+})
+
+export const DokployDomain = Schema.Struct({
+  domainId: Schema.String,
+  host: Schema.String,
+  path: Schema.NullOr(Schema.String),
+  port: Schema.NullOr(Schema.Int),
+  serviceName: Schema.NullOr(Schema.String),
+  https: Schema.Boolean,
+  certificateType: Schema.String,
+})
+
+export type DokployDomain = typeof DokployDomain.Type
+
 const DokployErrorBody = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
 })
@@ -148,6 +164,15 @@ export interface SecretNamesQuery {
   readonly environmentId: string
 }
 
+export interface DomainSettings {
+  readonly host: string
+  readonly path: string
+  readonly port: number
+  readonly serviceName: string
+  readonly https: boolean
+  readonly certificateType: string
+}
+
 export interface DokployClientShape {
   readonly projects: Effect.Effect<ReadonlyArray<DokployProject>, DokployError>
   readonly vaultProviders: Effect.Effect<
@@ -157,6 +182,23 @@ export interface DokployClientShape {
   readonly listSecretNames: (
     query: SecretNamesQuery,
   ) => Effect.Effect<ReadonlyArray<string>, DokployError>
+  readonly composeEnv: (
+    composeId: string,
+  ) => Effect.Effect<string, DokployError>
+  readonly composeDomains: (
+    composeId: string,
+  ) => Effect.Effect<ReadonlyArray<DokployDomain>, DokployError>
+  readonly saveEnvironment: (change: {
+    readonly composeId: string
+    readonly env: string
+  }) => Effect.Effect<void, DokployError>
+  readonly createDomain: (
+    domain: DomainSettings & { readonly composeId: string },
+  ) => Effect.Effect<void, DokployError>
+  readonly updateDomain: (
+    domain: DomainSettings & { readonly domainId: string },
+  ) => Effect.Effect<void, DokployError>
+  readonly deleteDomain: (domainId: string) => Effect.Effect<void, DokployError>
 }
 
 interface DokployClientDependencies {
@@ -169,6 +211,17 @@ interface DokployQuery<S extends Schema.Top> {
   readonly endpoint: string
   readonly schema: S
   readonly params?: Readonly<Record<string, string>>
+}
+
+interface DokployMutation {
+  readonly endpoint: string
+  readonly body: Readonly<Record<string, unknown>>
+}
+
+interface DokployCall<S extends Schema.Top> {
+  readonly endpoint: string
+  readonly schema: S
+  readonly request: HttpClientRequest.HttpClientRequest
 }
 
 function errorFromStatus({
@@ -226,14 +279,124 @@ class HttpDokployClient implements DokployClientShape {
     )
   }
 
+  composeEnv(composeId: string) {
+    return pipe(
+      this.query({
+        endpoint: 'compose.one',
+        schema: DokployComposeEnv,
+        params: { composeId },
+      }),
+      Effect.map(({ env }) => env ?? ''),
+      Effect.withSpan('DokployClient.composeEnv', {
+        attributes: { composeId },
+      }),
+    )
+  }
+
+  composeDomains(composeId: string) {
+    return pipe(
+      this.query({
+        endpoint: 'domain.byComposeId',
+        schema: Schema.Array(DokployDomain),
+        params: { composeId },
+      }),
+      Effect.withSpan('DokployClient.composeDomains', {
+        attributes: { composeId },
+      }),
+    )
+  }
+
+  saveEnvironment({
+    composeId,
+    env,
+  }: {
+    readonly composeId: string
+    readonly env: string
+  }) {
+    return pipe(
+      this.mutate({
+        endpoint: 'compose.saveEnvironment',
+        body: { composeId, env },
+      }),
+      Effect.withSpan('DokployClient.saveEnvironment', {
+        attributes: { composeId },
+      }),
+    )
+  }
+
+  createDomain(domain: DomainSettings & { readonly composeId: string }) {
+    return pipe(
+      this.mutate({
+        endpoint: 'domain.create',
+        body: { ...domain, domainType: 'compose' },
+      }),
+      Effect.withSpan('DokployClient.createDomain', {
+        attributes: { host: domain.host, path: domain.path },
+      }),
+    )
+  }
+
+  updateDomain(domain: DomainSettings & { readonly domainId: string }) {
+    return pipe(
+      this.mutate({
+        endpoint: 'domain.update',
+        body: { ...domain, domainType: 'compose' },
+      }),
+      Effect.withSpan('DokployClient.updateDomain', {
+        attributes: { domainId: domain.domainId, host: domain.host },
+      }),
+    )
+  }
+
+  deleteDomain(domainId: string) {
+    return pipe(
+      this.mutate({ endpoint: 'domain.delete', body: { domainId } }),
+      Effect.withSpan('DokployClient.deleteDomain', {
+        attributes: { domainId },
+      }),
+    )
+  }
+
   private query<S extends Schema.Top & { readonly DecodingServices: never }>({
     endpoint,
     schema,
     params = {},
   }: DokployQuery<S>) {
+    return pipe(
+      this.send({
+        endpoint,
+        schema,
+        request: pipe(
+          HttpClientRequest.get(this.endpointUrl(endpoint)),
+          HttpClientRequest.setUrlParams(params),
+        ),
+      }),
+      Effect.withSpan('DokployClient.query', { attributes: { endpoint } }),
+    )
+  }
+
+  private mutate({ endpoint, body }: DokployMutation) {
+    return pipe(
+      this.send({
+        endpoint,
+        schema: Schema.Unknown,
+        request: pipe(
+          HttpClientRequest.post(this.endpointUrl(endpoint)),
+          HttpClientRequest.bodyText(JSON.stringify(body), 'application/json'),
+        ),
+      }),
+      Effect.asVoid,
+      Effect.withSpan('DokployClient.mutate', { attributes: { endpoint } }),
+    )
+  }
+
+  private send<S extends Schema.Top & { readonly DecodingServices: never }>({
+    endpoint,
+    schema,
+    request: bareRequest,
+  }: DokployCall<S>) {
     const request = pipe(
-      HttpClientRequest.get(this.endpointUrl(endpoint)),
-      HttpClientRequest.setUrlParams(params),
+      bareRequest,
       HttpClientRequest.acceptJson,
       HttpClientRequest.setHeader(
         'x-api-key',
@@ -258,7 +421,7 @@ class HttpDokployClient implements DokployClientShape {
         duration: `${requestTimeoutSeconds} seconds`,
         orElse: () => Effect.fail(DokployRequestError.timedOut(endpoint)),
       }),
-      Effect.withSpan('DokployClient.query', { attributes: { endpoint } }),
+      Effect.withSpan('DokployClient.send', { attributes: { endpoint } }),
     )
   }
 
@@ -340,6 +503,12 @@ export class DokployClient extends Context.Service<
       projects: Effect.succeed([]),
       vaultProviders: Effect.succeed([]),
       listSecretNames: () => Effect.succeed([]),
+      composeEnv: () => Effect.succeed(''),
+      composeDomains: () => Effect.succeed([]),
+      saveEnvironment: () => Effect.void,
+      createDomain: () => Effect.void,
+      updateDomain: () => Effect.void,
+      deleteDomain: () => Effect.void,
       ...shape,
     })
 

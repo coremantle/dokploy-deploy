@@ -18,7 +18,12 @@ import type {
   DuplicateDomainError,
   UnknownComposeServiceError,
 } from '#domains/desired-domains.ts'
-import { desiredDomains } from '#domains/desired-domains.ts'
+import {
+  desiredDomains,
+  routesWithAllowedMethods,
+} from '#domains/desired-domains.ts'
+import type { DomainDiff } from '#domains/domain-diff.ts'
+import { diffDomains } from '#domains/domain-diff.ts'
 import type {
   DokployClientShape,
   DokployError,
@@ -44,6 +49,8 @@ import {
   guardFolder,
   renderEnvironment,
 } from '#env/env-references.ts'
+import type { EnvDiff } from '#env/env-diff.ts'
+import { diffEnv } from '#env/env-diff.ts'
 import type { Manifest, ManifestEnvironment } from '#manifest/manifest.ts'
 import type {
   WorkspaceFileError,
@@ -82,6 +89,13 @@ export interface DeploymentPlan {
   readonly keys: ReadonlyArray<string>
   readonly env: string
   readonly domains: ReadonlyArray<DesiredDomain>
+  readonly changes: DeploymentChanges
+  readonly unsupported: ReadonlyArray<string>
+}
+
+export interface DeploymentChanges {
+  readonly env: EnvDiff
+  readonly domains: DomainDiff
 }
 
 export type DeploymentPlanError =
@@ -236,16 +250,52 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     const { folder } = manifest.secrets
     return pipe(
       renderEnvironment({ provider, folder, keys }),
-      Effect.map((env): DeploymentPlan => ({
+      Effect.flatMap((env) =>
+        Effect.all({
+          env: Effect.succeed(env),
+          changes: this.changesAgainst({ target, env, domains }),
+        }),
+      ),
+      Effect.map(({ env, changes }): DeploymentPlan => ({
         provider,
         folder,
         keys,
         env,
         domains,
+        changes,
+        unsupported: routesWithAllowedMethods(domains),
         environment: this.dependencies.inputs.environment,
         dokploy: { ...environment.dokploy, ...target },
       })),
       Effect.withSpan('DeploymentPlanner.renderPlan'),
+    )
+  }
+
+  private changesAgainst({
+    target,
+    env,
+    domains,
+  }: {
+    readonly target: DokployTarget
+    readonly env: string
+    readonly domains: ReadonlyArray<DesiredDomain>
+  }) {
+    const { dokploy } = this.dependencies
+    return pipe(
+      Effect.all(
+        {
+          currentEnv: dokploy.composeEnv(target.composeId),
+          currentDomains: dokploy.composeDomains(target.composeId),
+        },
+        { concurrency: 'unbounded' },
+      ),
+      Effect.map(({ currentEnv, currentDomains }): DeploymentChanges => ({
+        env: diffEnv({ current: currentEnv, desired: env }),
+        domains: diffDomains({ current: currentDomains, desired: domains }),
+      })),
+      Effect.withSpan('DeploymentPlanner.changesAgainst', {
+        attributes: { composeId: target.composeId },
+      }),
     )
   }
 
@@ -320,6 +370,11 @@ export class DeploymentPlanner extends Context.Service<
         keys: ['MESSAGE'],
         env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
         domains: [],
+        changes: {
+          env: { drift: false, added: [], removed: [], changed: [] },
+          domains: { create: [], update: [], delete: [], unchanged: [] },
+        },
+        unsupported: [],
       }),
       ...shape,
     })
