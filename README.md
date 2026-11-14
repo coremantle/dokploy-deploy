@@ -273,7 +273,7 @@ APP_VERSION=2f0be93668d4
 ```
 
 - **The value is the short sha**: the first **12** characters of the
-  `commit` input, lowercase — the commit `apply` deploys and then verifies.
+  `commit` input, lowercase — the commit `apply` deploys and verifies.
   Twelve characters is a fixed width (unlike `git rev-parse --short`, which
   grows with the repository), unambiguous in practice, and accepted
   everywhere a commit is looked up (`git show`, the forge's commit pages).
@@ -285,13 +285,18 @@ APP_VERSION=2f0be93668d4
   changes this line, and only it, so every deploy of a new commit also saves
   the block — by design. `plan` shows it as a changed key, and states the
   value it writes.
-- **It needs a commit**: with `commit: ''` the step fails instead of writing
-  an empty version. On a `pull_request`, `plan` shows the `commit` input — the
+- **It needs a commit**: with `commit: ''` the step fails, before any call
+  to Dokploy, instead of writing an empty version. On a `pull_request`, `plan` shows the `commit` input — the
   merge commit unless you pass the head sha (see [the deploy](#the-deploy)).
 - **A secret of the same name fails the step**: the action would write the key
   twice. Rename one of them.
 - The [commit check](#the-deploy) is unchanged: it compares the full sha
-  Dokploy recorded with the `commit` input, not this line.
+  Dokploy recorded with the `commit` input, not this line. The line is what
+  the job wrote, not read back from the build: when the commit check fails
+  (an older job re-run after the branch moved) or with `deploy: false`, the
+  env names the job's commit while Dokploy runs, or will build, another one —
+  re-run the latest job. Two jobs of the same compose running at once can
+  also swap their lines: keep the per-environment `concurrency` group.
 
 ```yaml
 - uses: https://github.com/coremantle/dokploy-deploy@v1

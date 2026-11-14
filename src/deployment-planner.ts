@@ -54,7 +54,6 @@ import {
   guardFolder,
   renderEnvironment,
   resolveVersion,
-  versionLine,
 } from '#env/env-references.ts'
 import type { EnvDiff } from '#env/env-diff.ts'
 import { diffEnv } from '#env/env-diff.ts'
@@ -135,13 +134,16 @@ interface DeploymentPlannerDependencies {
 interface SelectedEnvironment {
   readonly manifest: Manifest
   readonly environment: ManifestEnvironment
+  readonly version: Option.Option<AppVersion>
 }
 
 function selectEnvironment({
   manifest,
+  version,
   name,
 }: {
   readonly manifest: Manifest
+  readonly version: Option.Option<AppVersion>
   readonly name: string
 }) {
   return pipe(
@@ -149,6 +151,7 @@ function selectEnvironment({
     Option.map((environment): SelectedEnvironment => ({
       manifest,
       environment,
+      version,
     })),
     Effect.fromOption(() =>
       UnknownEnvironmentError.notDeclared({
@@ -191,9 +194,16 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   private buildPlan() {
     const { inputs, workspaceFiles } = this.dependencies
     return pipe(
-      workspaceFiles.readManifest(inputs.manifest),
-      Effect.flatMap((manifest) =>
-        selectEnvironment({ manifest, name: inputs.environment }),
+      // Why: version-env without a commit is an input mistake — fail before reading the workspace or calling Dokploy.
+      Effect.all({
+        version: resolveVersion({
+          variable: inputs.versionEnv,
+          commit: inputs.commit,
+        }),
+        manifest: workspaceFiles.readManifest(inputs.manifest),
+      }),
+      Effect.flatMap(({ manifest, version }) =>
+        selectEnvironment({ manifest, version, name: inputs.environment }),
       ),
       Effect.tap(({ manifest, environment }) =>
         guardFolder({
@@ -211,7 +221,11 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     )
   }
 
-  private planEnvironment({ manifest, environment }: SelectedEnvironment) {
+  private planEnvironment({
+    manifest,
+    environment,
+    version,
+  }: SelectedEnvironment) {
     const { workspaceFiles } = this.dependencies
     return pipe(
       workspaceFiles.readCompose(manifest.composeFile),
@@ -228,7 +242,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
         }),
       ),
       Effect.flatMap((resolved) =>
-        this.planKeys({ manifest, environment, ...resolved }),
+        this.planKeys({ manifest, environment, version, ...resolved }),
       ),
       Effect.withSpan('DeploymentPlanner.planEnvironment'),
     )
@@ -253,37 +267,23 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   private renderPlan({
     manifest,
     environment,
+    version,
     compose,
     domains,
     target,
     keys,
   }: ResolvedEnvironment & { readonly keys: ReadonlyArray<string> }) {
-    const { inputs } = this.dependencies
     const provider = providerOf(environment)
     const { folder } = manifest.secrets
     return pipe(
-      Effect.all({
-        references: renderEnvironment({ provider, folder, keys }),
-        version: resolveVersion({
-          provider,
-          folder,
-          keys,
-          variable: inputs.versionEnv,
-          commit: inputs.commit,
-        }),
-      }),
-      Effect.map(({ references, version }) => ({
-        version,
-        env: `${references}${Option.match(version, { onNone: () => '', onSome: versionLine })}`,
-      })),
-      Effect.flatMap(({ env, version }) =>
+      renderEnvironment({ provider, folder, keys, version }),
+      Effect.flatMap((env) =>
         Effect.all({
           env: Effect.succeed(env),
-          version: Effect.succeed(version),
           changes: this.changesAgainst({ target, env, domains }),
         }),
       ),
-      Effect.map(({ env, version, changes }): DeploymentPlan => ({
+      Effect.map(({ env, changes }): DeploymentPlan => ({
         provider,
         folder,
         keys,
@@ -296,7 +296,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
           routerHosts: compose.routerHosts,
           declaredHosts: manifestHosts(manifest),
         }),
-        environment: inputs.environment,
+        environment: this.dependencies.inputs.environment,
         dokploy: { ...environment.dokploy, ...target },
       })),
       Effect.withSpan('DeploymentPlanner.renderPlan'),

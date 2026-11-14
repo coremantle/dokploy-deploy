@@ -36127,10 +36127,15 @@ function referenceLine({
 }
 function renderEnvironment({
   keys: keys3,
+  version = Option_exports.none(),
   ...source
 }) {
   const sortedKeys2 = pipe(keys3, Array_exports.dedupe, Array_exports.sort(Order_exports.String));
   const invalidKeys = Array_exports.filter(sortedKeys2, (key5) => !dotenvKey.test(key5));
+  const collision = Option_exports.filter(
+    version,
+    ({ key: key5 }) => Array_exports.contains(sortedKeys2, key5)
+  );
   return pipe(
     Effect_exports.succeed(sortedKeys2),
     Effect_exports.filterOrFail(
@@ -36141,12 +36146,21 @@ function renderEnvironment({
       () => Array_exports.isReadonlyArrayEmpty(invalidKeys),
       () => InvalidSecretKeyError.forKeys(invalidKeys)
     ),
+    Effect_exports.flatMap(
+      (validKeys) => Option_exports.match(collision, {
+        onNone: () => Effect_exports.succeed(validKeys),
+        onSome: ({ key: key5 }) => Effect_exports.fail(VersionKeyCollisionError.forKey({ ...source, key: key5 }))
+      })
+    ),
     Effect_exports.map(
-      (validKeys) => Array_exports.map(
-        validKeys,
-        (key5) => `${referenceLine({ ...source, key: key5 })}
+      (validKeys) => [
+        ...Array_exports.map(
+          validKeys,
+          (key5) => `${referenceLine({ ...source, key: key5 })}
 `
-      ).join("")
+        ),
+        ...Option_exports.toArray(Option_exports.map(version, versionLine))
+      ].join("")
     ),
     Effect_exports.withSpan("EnvReferences.renderEnvironment", {
       attributes: { provider: source.provider, folder: source.folder }
@@ -36171,35 +36185,24 @@ function checkComposeVariables({
     })
   );
 }
-function versionOf({
-  key: key5,
-  commit,
-  keys: keys3,
-  ...source
-}) {
-  return pipe(
-    commit,
-    Effect_exports.fromOption(() => VersionWithoutCommitError.forKey(key5)),
-    Effect_exports.filterOrFail(
-      () => !Array_exports.contains(keys3, key5),
-      () => VersionKeyCollisionError.forKey({ key: key5, ...source })
-    ),
-    Effect_exports.map((sha) => ({
-      key: key5,
-      value: sha.slice(0, versionLength)
-    })),
-    Effect_exports.withSpan("EnvReferences.versionOf", { attributes: { key: key5 } })
-  );
-}
 function resolveVersion({
   variable,
-  ...context3
+  commit
 }) {
   return pipe(
     variable,
     Option_exports.match({
       onNone: () => Effect_exports.succeedNone,
-      onSome: (key5) => Effect_exports.asSome(versionOf({ key: key5, ...context3 }))
+      onSome: (key5) => pipe(
+        commit,
+        Effect_exports.fromOption(() => VersionWithoutCommitError.forKey(key5)),
+        Effect_exports.map(
+          (sha) => Option_exports.some({
+            key: key5,
+            value: sha.toLowerCase().slice(0, versionLength)
+          })
+        )
+      )
     }),
     Effect_exports.withSpan("EnvReferences.resolveVersion")
   );
@@ -37142,13 +37145,15 @@ var UnknownEnvironmentError = class _UnknownEnvironmentError extends Schema_expo
 };
 function selectEnvironment({
   manifest,
+  version,
   name
 }) {
   return pipe(
     Record_exports.get(manifest.environments, name),
     Option_exports.map((environment) => ({
       manifest,
-      environment
+      environment,
+      version
     })),
     Effect_exports.fromOption(
       () => UnknownEnvironmentError.notDeclared({
@@ -37177,9 +37182,16 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   buildPlan() {
     const { inputs, workspaceFiles } = this.dependencies;
     return pipe(
-      workspaceFiles.readManifest(inputs.manifest),
+      // Why: version-env without a commit is an input mistake — fail before reading the workspace or calling Dokploy.
+      Effect_exports.all({
+        version: resolveVersion({
+          variable: inputs.versionEnv,
+          commit: inputs.commit
+        }),
+        manifest: workspaceFiles.readManifest(inputs.manifest)
+      }),
       Effect_exports.flatMap(
-        (manifest) => selectEnvironment({ manifest, name: inputs.environment })
+        ({ manifest, version }) => selectEnvironment({ manifest, version, name: inputs.environment })
       ),
       Effect_exports.tap(
         ({ manifest, environment }) => guardFolder({
@@ -37196,7 +37208,11 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
       })
     );
   }
-  planEnvironment({ manifest, environment }) {
+  planEnvironment({
+    manifest,
+    environment,
+    version
+  }) {
     const { workspaceFiles } = this.dependencies;
     return pipe(
       workspaceFiles.readCompose(manifest.composeFile),
@@ -37213,7 +37229,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
         })
       ),
       Effect_exports.flatMap(
-        (resolved) => this.planKeys({ manifest, environment, ...resolved })
+        (resolved) => this.planKeys({ manifest, environment, version, ...resolved })
       ),
       Effect_exports.withSpan("DeploymentPlanner.planEnvironment")
     );
@@ -37236,37 +37252,23 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   renderPlan({
     manifest,
     environment,
+    version,
     compose: compose4,
     domains,
     target,
     keys: keys3
   }) {
-    const { inputs } = this.dependencies;
     const provider = providerOf(environment);
     const { folder } = manifest.secrets;
     return pipe(
-      Effect_exports.all({
-        references: renderEnvironment({ provider, folder, keys: keys3 }),
-        version: resolveVersion({
-          provider,
-          folder,
-          keys: keys3,
-          variable: inputs.versionEnv,
-          commit: inputs.commit
-        })
-      }),
-      Effect_exports.map(({ references, version }) => ({
-        version,
-        env: `${references}${Option_exports.match(version, { onNone: () => "", onSome: versionLine })}`
-      })),
+      renderEnvironment({ provider, folder, keys: keys3, version }),
       Effect_exports.flatMap(
-        ({ env, version }) => Effect_exports.all({
+        (env) => Effect_exports.all({
           env: Effect_exports.succeed(env),
-          version: Effect_exports.succeed(version),
           changes: this.changesAgainst({ target, env, domains })
         })
       ),
-      Effect_exports.map(({ env, version, changes }) => ({
+      Effect_exports.map(({ env, changes }) => ({
         provider,
         folder,
         keys: keys3,
@@ -37279,7 +37281,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
           routerHosts: compose4.routerHosts,
           declaredHosts: manifestHosts(manifest)
         }),
-        environment: inputs.environment,
+        environment: this.dependencies.inputs.environment,
         dokploy: { ...environment.dokploy, ...target }
       })),
       Effect_exports.withSpan("DeploymentPlanner.renderPlan")
@@ -37414,7 +37416,7 @@ function versionNote({ version }) {
     onNone: () => [],
     onSome: ({ key: key5, value: value5 }) => [
       "",
-      `${cell(key5)} is set to ${cell(value5)}, the commit deployed: the action writes this line itself, it is not a secret reference.`
+      `${cell(key5)} is set to ${cell(value5)}, the short sha of the \`commit\` input \u2014 the commit \`apply\` deploys. The action writes this line itself; it is not a secret reference.`
     ]
   });
 }

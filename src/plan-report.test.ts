@@ -182,7 +182,7 @@ describe('renderPlanReport', () => {
     // Then: the key change and the value written are both shown
     expect(report).toContain('| change | `APP_VERSION` |')
     expect(report).toContain(
-      '`APP_VERSION` is set to `0123456789ab`, the commit deployed',
+      '`APP_VERSION` is set to `0123456789ab`, the short sha of the `commit` input',
     )
   })
 
@@ -194,6 +194,6 @@ describe('renderPlanReport', () => {
     const report = renderPlanReport(plan)
 
     // Then: no version line is announced
-    expect(report).not.toContain('the commit deployed')
+    expect(report).not.toContain('short sha')
   })
 })

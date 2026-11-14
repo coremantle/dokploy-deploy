@@ -180,10 +180,17 @@ function referenceLine({
 
 export function renderEnvironment({
   keys,
+  version = Option.none(),
   ...source
-}: ReferenceSource & { readonly keys: ReadonlyArray<string> }) {
+}: ReferenceSource & {
+  readonly keys: ReadonlyArray<string>
+  readonly version?: Option.Option<AppVersion>
+}) {
   const sortedKeys = pipe(keys, Array.dedupe, Array.sort(Order.String))
   const invalidKeys = Array.filter(sortedKeys, (key) => !dotenvKey.test(key))
+  const collision = Option.filter(version, ({ key }) =>
+    Array.contains(sortedKeys, key),
+  )
   return pipe(
     Effect.succeed(sortedKeys),
     Effect.filterOrFail(Array.isReadonlyArrayNonEmpty, () =>
@@ -193,11 +200,21 @@ export function renderEnvironment({
       () => Array.isReadonlyArrayEmpty(invalidKeys),
       () => InvalidSecretKeyError.forKeys(invalidKeys),
     ),
+    Effect.flatMap((validKeys) =>
+      Option.match(collision, {
+        onNone: () => Effect.succeed(validKeys),
+        onSome: ({ key }) =>
+          Effect.fail(VersionKeyCollisionError.forKey({ ...source, key })),
+      }),
+    ),
     Effect.map((validKeys) =>
-      Array.map(
-        validKeys,
-        (key) => `${referenceLine({ ...source, key })}\n`,
-      ).join(''),
+      [
+        ...Array.map(
+          validKeys,
+          (key) => `${referenceLine({ ...source, key })}\n`,
+        ),
+        ...Option.toArray(Option.map(version, versionLine)),
+      ].join(''),
     ),
     Effect.withSpan('EnvReferences.renderEnvironment', {
       attributes: { provider: source.provider, folder: source.folder },
@@ -230,49 +247,33 @@ export function checkComposeVariables({
   )
 }
 
-function versionOf({
-  key,
-  commit,
-  keys,
-  ...source
-}: ReferenceSource & {
-  readonly key: string
-  readonly commit: Option.Option<string>
-  readonly keys: ReadonlyArray<string>
-}) {
-  return pipe(
-    commit,
-    Effect.fromOption(() => VersionWithoutCommitError.forKey(key)),
-    Effect.filterOrFail(
-      () => !Array.contains(keys, key),
-      () => VersionKeyCollisionError.forKey({ key, ...source }),
-    ),
-    Effect.map((sha): AppVersion => ({
-      key,
-      value: sha.slice(0, versionLength),
-    })),
-    Effect.withSpan('EnvReferences.versionOf', { attributes: { key } }),
-  )
-}
-
 export function resolveVersion({
   variable,
-  ...context
-}: ReferenceSource & {
+  commit,
+}: {
   readonly variable: Option.Option<string>
   readonly commit: Option.Option<string>
-  readonly keys: ReadonlyArray<string>
 }) {
   return pipe(
     variable,
     Option.match({
       onNone: () => Effect.succeedNone,
-      onSome: (key) => Effect.asSome(versionOf({ key, ...context })),
+      onSome: (key) =>
+        pipe(
+          commit,
+          Effect.fromOption(() => VersionWithoutCommitError.forKey(key)),
+          Effect.map((sha) =>
+            Option.some<AppVersion>({
+              key,
+              value: sha.toLowerCase().slice(0, versionLength),
+            }),
+          ),
+        ),
     }),
     Effect.withSpan('EnvReferences.resolveVersion'),
   )
 }
 
-export function versionLine({ key, value }: AppVersion): string {
+function versionLine({ key, value }: AppVersion): string {
   return `${key}=${value}\n`
 }

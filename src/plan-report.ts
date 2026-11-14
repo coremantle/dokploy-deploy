@@ -41,7 +41,7 @@ function versionNote({ version }: DeploymentPlan) {
     onNone: () => [],
     onSome: ({ key, value }) => [
       '',
-      `${cell(key)} is set to ${cell(value)}, the commit deployed: the action writes this line itself, it is not a secret reference.`,
+      `${cell(key)} is set to ${cell(value)}, the short sha of the \`commit\` input — the commit \`apply\` deploys. The action writes this line itself; it is not a secret reference.`,
     ],
   })
 }

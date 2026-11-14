@@ -19,6 +19,7 @@ import {
   NoSecretKeysError,
   ReferenceGuardError,
   VersionKeyCollisionError,
+  VersionWithoutCommitError,
 } from '#env/env-references.ts'
 import type { Manifest } from '#manifest/manifest.ts'
 import { WorkspaceFiles } from '#workspace-files.ts'
@@ -583,6 +584,25 @@ describe('DeploymentPlanner', () => {
             folder: '/demo/hello',
           }),
         )
+      }),
+  )
+
+  effect(
+    'should refuse version-env without a commit before calling Dokploy',
+    () =>
+      Effect.gen(function* () {
+        // Given: version-env set while the commit check is off
+        const { layer, dokployCalls } = plannerIn({
+          versionEnv: Option.some('APP_VERSION'),
+          commit: Option.none(),
+        })
+
+        // When: planning
+        const error = yield* Effect.flip(planWith(layer))
+
+        // Then: it fails on the inputs, without spending a Dokploy request
+        expect(error).toEqual(VersionWithoutCommitError.forKey('APP_VERSION'))
+        expect(dokployCalls).toEqual([])
       }),
   )
 })
