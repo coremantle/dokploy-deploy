@@ -64,25 +64,28 @@ nothing. The runner — or the job's container image — must provide **Node.js
 
 ## Inputs
 
-| Input            | Required | Default               | Description                                                                                                 |
-| ---------------- | -------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `api-url`        | yes      | —                     | Base URL of the Dokploy API, e.g. `https://dokploy.example.com/api`.                                        |
-| `api-key`        | yes      | —                     | API key of a Dokploy member scoped to the project. Pass it from a secret.                                   |
-| `manifest`       | no       | `deploy/dokploy.yml`  | Path of the deployment manifest, relative to the workspace.                                                 |
-| `environment`    | no       | `production`          | Key of the manifest's `environments` to plan or deploy.                                                     |
-| `mode`           | no       | `plan`                | `plan` reads Dokploy and reports the changes, writing nothing to Dokploy; `apply` makes them.               |
-| `token`          | no       | `${{ github.token }}` | Token that comments the plan on the pull request. Masked in the log.                                        |
-| `pr-comment`     | no       | `true`                | `true`: `plan` on a pull request posts its report as one comment, edited on each run. `false`: log it only. |
-| `deploy`         | no       | `true`                | `true`: `apply` deploys the compose after writing the changes and waits for the result. `false`: no deploy. |
-| `commit`         | no       | `${{ github.sha }}`   | Full sha the deployment must have deployed. Empty: deploy without the check (the `sha` output stays empty). |
-| `deploy-timeout` | no       | `1800`                | Seconds to wait for the deployment to end once requested, Dokploy's queue included.                         |
+| Input            | Required | Default               | Description                                                                                                                               |
+| ---------------- | -------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `api-url`        | yes      | —                     | Base URL of the Dokploy API, e.g. `https://dokploy.example.com/api`.                                                                      |
+| `api-key`        | yes      | —                     | API key of a Dokploy member scoped to the project. Pass it from a secret.                                                                 |
+| `manifest`       | no       | `deploy/dokploy.yml`  | Path of the deployment manifest, relative to the workspace.                                                                               |
+| `environment`    | no       | `production`          | Key of the manifest's `environments` to plan or deploy.                                                                                   |
+| `mode`           | no       | `plan`                | `plan` reads Dokploy and reports the changes, writing nothing to Dokploy; `apply` makes them.                                             |
+| `token`          | no       | `${{ github.token }}` | Token that comments the plan on the pull request. Masked in the log.                                                                      |
+| `pr-comment`     | no       | `true`                | `true`: `plan` on a pull request posts its report as one comment, edited on each run. `false`: log it only.                               |
+| `deploy`         | no       | `true`                | `true`: `apply` deploys the compose after writing the changes and waits for the result. `false`: no deploy.                               |
+| `commit`         | no       | `${{ github.sha }}`   | Full sha the deployment must have deployed. Empty: deploy without the check (the `sha` output stays empty).                               |
+| `deploy-timeout` | no       | `1800`                | Seconds to wait for the deployment to end once requested, Dokploy's queue included.                                                       |
+| `version-env`    | no       | empty (off)           | Variable name, e.g. `APP_VERSION`: `apply` also writes `<name>=<short sha>`, see [the deployed commit](#the-deployed-commit-version-env). |
 
 Every input is trimmed, then validated before anything runs: a URL that is
 not `https`, a blank key or one with spaces or line breaks inside, a manifest
 path spanning several lines, an environment that is not a lowercase name, a
 mode other than `plan` / `apply`, a `pr-comment` or `deploy` other than
-`true` / `false`, a `commit` that is not a full 40- or 64-character sha, or a
-`deploy-timeout` that is not a positive number of seconds fails the step.
+`true` / `false`, a `commit` that is not a full 40- or 64-character sha, a
+`deploy-timeout` that is not a positive number of seconds, or a `version-env`
+that is not a variable name (letters, digits and `_`, not starting with a
+digit) fails the step.
 
 ## Outputs
 
@@ -101,8 +104,9 @@ only logs a warning: the step's result is the deployment's.
 ### The plan comment
 
 `plan` on a `pull_request` event comments its report on the pull request: the
-environment keys added, changed or removed, the domains created, updated
-or deleted, and the warnings (a Traefik router host the manifest does not
+environment keys added, changed or removed, the version line when
+[`version-env`](#the-deployed-commit-version-env) is set, the domains created,
+updated or deleted, and the warnings (a Traefik router host the manifest does not
 declare, see [Restricting HTTP methods](#restricting-http-methods)). One
 comment per environment and Dokploy compose, found again by a hidden marker
 at its start and edited in place on each push. It goes
@@ -189,10 +193,14 @@ characters at most).
    `vaultProvider.listSecretNames`: no Infisical credential is needed.
 7. **Compose check**: every `${VAR}` of `composeFile` without a default
    (`$VAR`, `${VAR}`, `${VAR:?…}`, `${VAR?…}`) is one of those keys — a
-   reference to a missing key fails the Dokploy deploy.
+   reference to a missing key fails the Dokploy deploy. The
+   [`version-env`](#the-deployed-commit-version-env) variable, when set,
+   counts as one of them.
 8. The environment block is rendered, one line per key, sorted:
    `KEY='${{vault.<provider>.<folder>:KEY}}'`. Key names are limited to
-   letters, digits, `_`, `.` and `-`.
+   letters, digits, `_`, `.` and `-`. With
+   [`version-env`](#the-deployed-commit-version-env), one more line follows
+   them: `<name>=<short sha>`.
 9. **Diff**: the block is compared with the compose's current env
    (`compose.one`), and the manifest domains with the
    compose's domains (`domain.byComposeId`), matched by host and path.
@@ -238,7 +246,9 @@ that is kept. The manifest cannot name a custom certificate resolver yet: a
 so set the resolver in Dokploy afterwards; `apply` keeps it.
 
 Run twice with the same manifest, `apply` writes no env and no domain the
-second time; it still deploys again (see below). The first Dokploy error
+second time; it still deploys again (see below). With `version-env`, the same
+holds for a re-run of the same commit; a new commit changes the version line,
+so the block is saved again — that line only. The first Dokploy error
 stops it and fails the step with the endpoint, the status and Dokploy's
 message; the writes already made stay. Compose env and domains take effect on
 the deploy that follows.
@@ -248,6 +258,70 @@ The key's member needs, on the compose: read access, `envVars: write`,
 `delete`, and `deployment: create` and `read`. Create the key with
 `rateLimitEnabled: false`: a deploy polls Dokploy every 5 seconds, far beyond
 the default limit of a Dokploy API key (10 requests a day).
+
+### The deployed commit (`version-env`)
+
+An application that reports its version — OpenTelemetry `service.version`,
+Faro `app.version` — needs the deployed commit in its compose, but the
+manifest only ever produces secret references. Set `version-env` to a
+variable name and `apply` adds **one plain line**, owned by the action, at
+the end of the environment block:
+
+```text
+MESSAGE='${{vault.infisical-my-app./my-app:MESSAGE}}'
+APP_VERSION=2f0be93668d4
+```
+
+- **The value is the short sha**: the first **12** characters of the
+  `commit` input, lowercase — the commit `apply` deploys and then verifies.
+  Twelve characters is a fixed width (unlike `git rev-parse --short`, which
+  grows with the repository), unambiguous in practice, and accepted
+  everywhere a commit is looked up (`git show`, the forge's commit pages).
+- **Opt-in**: empty, the default, writes nothing — the block stays as it was.
+- **Not a secret**: it is printed in the job log and the plan comment like
+  the references. It is still no way to write literals: the manifest refuses
+  them as before, and this one line always holds the commit.
+- **Idempotent**: re-running the same commit writes nothing; each new commit
+  changes this line, and only it, so every deploy of a new commit also saves
+  the block — by design. `plan` shows it as a changed key, and states the
+  value it writes.
+- **It needs a commit**: with `commit: ''` the step fails instead of writing
+  an empty version. On a `pull_request`, `plan` shows the `commit` input — the
+  merge commit unless you pass the head sha (see [the deploy](#the-deploy)).
+- **A secret of the same name fails the step**: the action would write the key
+  twice. Rename one of them.
+- The [commit check](#the-deploy) is unchanged: it compares the full sha
+  Dokploy recorded with the `commit` input, not this line.
+
+```yaml
+- uses: https://github.com/coremantle/dokploy-deploy@v1
+  with:
+    api-url: ${{ vars.DOKPLOY_API_URL }}
+    api-key: ${{ secrets.DOKPLOY_API_KEY }}
+    mode: apply
+    version-env: APP_VERSION
+```
+
+Read it in the compose with a default, so the file still runs without it (a
+local `docker compose up`, a deploy before the first `apply` with
+`version-env`); pass it as a build argument too when a bundle reads it at
+build time:
+
+```yaml
+services:
+  my-app-api:
+    environment:
+      APP_VERSION: ${APP_VERSION:-dev}
+  my-app-web:
+    build:
+      args:
+        NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-dev}
+    environment:
+      APP_VERSION: ${APP_VERSION:-dev}
+```
+
+Set `version-env` on the `plan` job too, so its comment shows the same block
+the `apply` will write.
 
 ### Restricting HTTP methods
 
@@ -362,8 +436,9 @@ commit check then decides, as it compares what was actually deployed.
   itself refuses the key anywhere else; the action never needs an admin key.
 - **The CI never holds a secret value.** The environment it writes into
   Dokploy is made of references (`${{vault…}}`) that Dokploy resolves at
-  deploy time; the key and the forge token are the only secrets the job
-  sees, and the action masks both in the log before doing anything else. The
+  deploy time — plus, with `version-env`, one line holding the deployed
+  commit, which is not a secret; the key and the forge token are the only
+  secrets the job sees, and the action masks both in the log before doing anything else. The
   env it reads back from Dokploy may hold values: only its key names are
   logged or commented.
 - **Reference guard — accident protection, not a barrier.** The action only

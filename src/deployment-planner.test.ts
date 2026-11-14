@@ -1,7 +1,7 @@
 import { describe, effect, expect } from '@effect/vitest'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 
-import { ActionInputs } from '#action-inputs.config.ts'
+import { ActionInputs, testCommit } from '#action-inputs.config.ts'
 import type { ComposeFile } from '#compose/compose-file.ts'
 import {
   DeploymentPlanner,
@@ -18,6 +18,7 @@ import {
   MissingComposeVariablesError,
   NoSecretKeysError,
   ReferenceGuardError,
+  VersionKeyCollisionError,
 } from '#env/env-references.ts'
 import type { Manifest } from '#manifest/manifest.ts'
 import { WorkspaceFiles } from '#workspace-files.ts'
@@ -78,6 +79,8 @@ interface FakeWorld {
   readonly environment?: string
   readonly currentEnv?: string
   readonly currentDomains?: ReadonlyArray<DokployDomain>
+  readonly versionEnv?: Option.Option<string>
+  readonly commit?: Option.Option<string>
 }
 
 function plannerIn({
@@ -87,13 +90,15 @@ function plannerIn({
   environment = 'production',
   currentEnv = '',
   currentDomains = [],
+  versionEnv = Option.none(),
+  commit = Option.some(testCommit),
 }: FakeWorld) {
   const dokployCalls: Array<string> = []
   const queries: Array<SecretNamesQuery> = []
   const layer = DeploymentPlanner.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        ActionInputs.buildTestLayer({ environment }),
+        ActionInputs.buildTestLayer({ environment, versionEnv, commit }),
         WorkspaceFiles.buildTestLayer({
           readManifest: () => Effect.succeed(manifest),
           readCompose: () => Effect.succeed(compose),
@@ -444,5 +449,140 @@ describe('DeploymentPlanner', () => {
         }),
       )
     }),
+  )
+
+  effect('should append the deployed commit when version-env is set', () =>
+    Effect.gen(function* () {
+      // Given: a caller opting in with APP_VERSION
+      const { layer } = plannerIn({
+        keys: ['MESSAGE'],
+        versionEnv: Option.some('APP_VERSION'),
+      })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: the references come first, then the short sha as a plain line
+      expect(plan.env).toBe(
+        [
+          "MESSAGE='${{vault.infisical-demo./demo/hello:MESSAGE}}'",
+          `APP_VERSION=${testCommit.slice(0, 12)}`,
+          '',
+        ].join('\n'),
+      )
+      expect(plan.version).toEqual(
+        Option.some({ key: 'APP_VERSION', value: testCommit.slice(0, 12) }),
+      )
+      expect(plan.keys).toEqual(['MESSAGE'])
+    }),
+  )
+
+  effect(
+    'should find no change on the same commit, and only the version on a new one',
+    () =>
+      Effect.gen(function* () {
+        // Given: Dokploy holding the block written for the first commit
+        const versionEnv = Option.some('APP_VERSION')
+        const first = yield* planWith(
+          plannerIn({ versionEnv, keys: ['MESSAGE'] }).layer,
+        )
+        const nextCommit = 'fedcba9876543210fedcba9876543210fedcba98'
+
+        // When: planning again for that commit, then for the next one
+        const plans = yield* Effect.all([
+          planWith(
+            plannerIn({ versionEnv, keys: ['MESSAGE'], currentEnv: first.env })
+              .layer,
+          ),
+          planWith(
+            plannerIn({
+              versionEnv,
+              keys: ['MESSAGE'],
+              currentEnv: first.env,
+              commit: Option.some(nextCommit),
+            }).layer,
+          ),
+        ])
+
+        // Then: a re-run writes nothing; a new commit changes the version line only
+        expect(plans[0].changes.env.drift).toBe(false)
+        expect(plans[1].changes.env).toEqual({
+          drift: true,
+          added: [],
+          removed: [],
+          changed: ['APP_VERSION'],
+        })
+      }),
+  )
+
+  effect('should add the version line to an env written before opting in', () =>
+    Effect.gen(function* () {
+      // Given: Dokploy holding the references alone, from a run without version-env
+      const before = yield* planWith(plannerIn({ keys: ['MESSAGE'] }).layer)
+      const { layer } = plannerIn({
+        keys: ['MESSAGE'],
+        currentEnv: before.env,
+        versionEnv: Option.some('APP_VERSION'),
+      })
+
+      // When: planning with version-env
+      const plan = yield* planWith(layer)
+
+      // Then: the version key is the only addition
+      expect(plan.changes.env).toEqual({
+        drift: true,
+        added: ['APP_VERSION'],
+        removed: [],
+        changed: [],
+      })
+    }),
+  )
+
+  effect(
+    'should accept the version variable without a default in the compose',
+    () =>
+      Effect.gen(function* () {
+        // Given: a compose file reading ${APP_VERSION} with no default
+        const compose = {
+          ...demoCompose,
+          requiredVariables: ['MESSAGE', 'APP_VERSION'],
+        }
+        const { layer } = plannerIn({
+          compose,
+          versionEnv: Option.some('APP_VERSION'),
+        })
+
+        // When: planning
+        const plan = yield* planWith(layer)
+
+        // Then: the action provides it, so the plan passes
+        expect(plan.version).toEqual(
+          Option.some({ key: 'APP_VERSION', value: testCommit.slice(0, 12) }),
+        )
+      }),
+  )
+
+  effect(
+    'should fail when the folder holds a secret named like version-env',
+    () =>
+      Effect.gen(function* () {
+        // Given: a secrets folder listing APP_VERSION
+        const { layer } = plannerIn({
+          keys: ['APP_VERSION', 'MESSAGE'],
+          versionEnv: Option.some('APP_VERSION'),
+        })
+
+        // When: planning
+        const error = yield* Effect.flip(planWith(layer))
+
+        // Then: the plan fails rather than writing the key twice
+        expect(error).toEqual(
+          VersionKeyCollisionError.forKey({
+            key: 'APP_VERSION',
+            provider: 'infisical-demo',
+            folder: '/demo/hello',
+          }),
+        )
+      }),
   )
 })

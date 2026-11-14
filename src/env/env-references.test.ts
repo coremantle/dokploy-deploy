@@ -1,16 +1,20 @@
 import { describe, effect, expect, it } from '@effect/vitest'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Option } from 'effect'
 
 import {
   InvalidSecretKeyError,
   MissingComposeVariablesError,
   NoSecretKeysError,
   ReferenceGuardError,
+  VersionKeyCollisionError,
+  VersionWithoutCommitError,
   checkComposeVariables,
   defaultProviderName,
   dokploySlug,
   guardFolder,
   renderEnvironment,
+  resolveVersion,
+  versionLine,
 } from '#env/env-references.ts'
 
 const demoSource = { provider: 'infisical-demo', folder: '/demo/hello' }
@@ -268,6 +272,93 @@ describe('checkComposeVariables', () => {
           compose: 'compose.yml',
           variables: ['B_MISSING', 'C_MISSING'],
         }),
+      )
+    }),
+  )
+})
+
+const deployedCommit = '2f0be93668d4e0f84da0e89a01a8a084a743b08b'
+
+describe('resolveVersion', () => {
+  effect('should write no version line when version-env is empty', () =>
+    Effect.gen(function* () {
+      // Given: a caller that did not opt in
+      const variable = Option.none<string>()
+
+      // When: resolving the version
+      const version = yield* resolveVersion({
+        ...demoSource,
+        variable,
+        commit: Option.some(deployedCommit),
+        keys: ['MESSAGE'],
+      })
+
+      // Then: there is none
+      expect(version).toEqual(Option.none())
+    }),
+  )
+
+  effect('should take the first 12 characters of the commit', () =>
+    Effect.gen(function* () {
+      // Given: a caller opting in with APP_VERSION
+      const variable = Option.some('APP_VERSION')
+
+      // When: resolving the version
+      const version = yield* resolveVersion({
+        ...demoSource,
+        variable,
+        commit: Option.some(deployedCommit),
+        keys: ['MESSAGE'],
+      })
+
+      // Then: the value is the short sha, rendered as a plain line
+      expect(version).toEqual(
+        Option.some({ key: 'APP_VERSION', value: '2f0be93668d4' }),
+      )
+      expect(Option.map(version, versionLine)).toEqual(
+        Option.some('APP_VERSION=2f0be93668d4\n'),
+      )
+    }),
+  )
+
+  effect('should refuse version-env without a commit', () =>
+    Effect.gen(function* () {
+      // Given: the commit check turned off
+      const commit = Option.none<string>()
+
+      // When: resolving the version
+      const error = yield* Effect.flip(
+        resolveVersion({
+          ...demoSource,
+          commit,
+          variable: Option.some('APP_VERSION'),
+          keys: ['MESSAGE'],
+        }),
+      )
+
+      // Then: the action fails rather than writing an empty version
+      expect(error).toEqual(VersionWithoutCommitError.forKey('APP_VERSION'))
+    }),
+  )
+
+  effect('should refuse a version-env that is also a secret key', () =>
+    Effect.gen(function* () {
+      // Given: a secrets folder already holding APP_VERSION
+      const keys = ['APP_VERSION', 'MESSAGE']
+
+      // When: resolving the version
+      const error = yield* Effect.flip(
+        resolveVersion({
+          ...demoSource,
+          keys,
+          variable: Option.some('APP_VERSION'),
+          commit: Option.some(deployedCommit),
+        }),
+      )
+
+      // Then: the action fails instead of writing the key twice
+      expect(error).toEqual(
+        VersionKeyCollisionError.forKey({ ...demoSource, key: 'APP_VERSION' }),
       )
     }),
   )

@@ -1,4 +1,4 @@
-import { Array, Effect, Order, Schema, pipe } from 'effect'
+import { Array, Effect, Option, Order, Schema, pipe } from 'effect'
 
 const dotenvKey = /^[A-Za-z0-9_.-]+$/u
 
@@ -65,6 +65,41 @@ export class MissingComposeVariablesError extends Schema.TaggedError<MissingComp
   }
 }
 
+export class VersionWithoutCommitError extends Schema.TaggedError<VersionWithoutCommitError>()(
+  'VersionWithoutCommitError',
+  { key: Schema.String, message: Schema.String },
+) {
+  static forKey(key: string): VersionWithoutCommitError {
+    return new VersionWithoutCommitError({
+      key,
+      message: `version-env ${key} writes the commit being deployed, but the commit input is empty: pass the commit, or leave version-env empty`,
+    })
+  }
+}
+
+export class VersionKeyCollisionError extends Schema.TaggedError<VersionKeyCollisionError>()(
+  'VersionKeyCollisionError',
+  {
+    key: Schema.String,
+    provider: Schema.String,
+    folder: Schema.String,
+    message: Schema.String,
+  },
+) {
+  static forKey({
+    key,
+    provider,
+    folder,
+  }: ReferenceSource & { readonly key: string }): VersionKeyCollisionError {
+    return new VersionKeyCollisionError({
+      key,
+      provider,
+      folder,
+      message: `version-env ${key} is also a secret key that vault provider ${provider} lists in ${folder}: the action writes ${key} itself, so rename the secret or pick another version-env`,
+    })
+  }
+}
+
 export interface ReferenceSource {
   readonly provider: string
   readonly folder: string
@@ -74,6 +109,13 @@ export interface GuardedFolder {
   readonly folder: string
   readonly project: string
 }
+
+export interface AppVersion {
+  readonly key: string
+  readonly value: string
+}
+
+export const versionLength = 12
 
 const defaultProviderEnvironment = 'production'
 
@@ -186,4 +228,51 @@ export function checkComposeVariables({
       attributes: { compose },
     }),
   )
+}
+
+function versionOf({
+  key,
+  commit,
+  keys,
+  ...source
+}: ReferenceSource & {
+  readonly key: string
+  readonly commit: Option.Option<string>
+  readonly keys: ReadonlyArray<string>
+}) {
+  return pipe(
+    commit,
+    Effect.fromOption(() => VersionWithoutCommitError.forKey(key)),
+    Effect.filterOrFail(
+      () => !Array.contains(keys, key),
+      () => VersionKeyCollisionError.forKey({ key, ...source }),
+    ),
+    Effect.map((sha): AppVersion => ({
+      key,
+      value: sha.slice(0, versionLength),
+    })),
+    Effect.withSpan('EnvReferences.versionOf', { attributes: { key } }),
+  )
+}
+
+export function resolveVersion({
+  variable,
+  ...context
+}: ReferenceSource & {
+  readonly variable: Option.Option<string>
+  readonly commit: Option.Option<string>
+  readonly keys: ReadonlyArray<string>
+}) {
+  return pipe(
+    variable,
+    Option.match({
+      onNone: () => Effect.succeedNone,
+      onSome: (key) => Effect.asSome(versionOf({ key, ...context })),
+    }),
+    Effect.withSpan('EnvReferences.resolveVersion'),
+  )
+}
+
+export function versionLine({ key, value }: AppVersion): string {
+  return `${key}=${value}\n`
 }

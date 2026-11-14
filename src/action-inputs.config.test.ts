@@ -461,4 +461,59 @@ describe('ActionInputs of the deploy', () => {
       expect(Exit.isFailure(outcome)).toBe(true)
     }),
   )
+
+  effect('should decode version-env, trimmed', () =>
+    Effect.gen(function* () {
+      // Given: a caller opting in to the version line
+      const environment = {
+        ...validInputs,
+        [inputVariables.versionEnv]: ' APP_VERSION ',
+      }
+
+      // When: reading the inputs
+      const inputs = yield* ActionInputs.pipe(
+        Effect.provide(layerWithEnvironment(environment)),
+      )
+
+      // Then: the variable name is kept
+      expect(inputs.versionEnv).toEqual(Option.some('APP_VERSION'))
+    }),
+  )
+
+  effect('should read a blank or absent version-env as off', () =>
+    Effect.gen(function* () {
+      // Given: the composite step passing the default, empty, and a local run without it
+      const blank = { ...validInputs, [inputVariables.versionEnv]: '' }
+
+      // When: reading the inputs
+      const inputs = yield* Effect.all([
+        ActionInputs.pipe(Effect.provide(layerWithEnvironment(blank))),
+        ActionInputs.pipe(Effect.provide(layerWithEnvironment(validInputs))),
+      ])
+
+      // Then: no version line is written
+      expect(inputs.map(({ versionEnv }) => versionEnv)).toEqual([
+        Option.none(),
+        Option.none(),
+      ])
+    }),
+  )
+
+  effect('should refuse a version-env that is not a variable name', () =>
+    Effect.gen(function* () {
+      // Given: a whole assignment instead of a name
+      const environment = {
+        ...validInputs,
+        [inputVariables.versionEnv]: 'APP_VERSION=dev',
+      }
+
+      // When: reading the inputs
+      const outcome = yield* Effect.exit(
+        ActionInputs.pipe(Effect.provide(layerWithEnvironment(environment))),
+      )
+
+      // Then: the action fails instead of guessing
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }),
+  )
 })

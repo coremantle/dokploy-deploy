@@ -40,16 +40,21 @@ import type {
 import { findVaultProvider, resolveTarget } from '#dokploy/dokploy-target.ts'
 import { EffectService } from '#effect/index.ts'
 import type {
+  AppVersion,
   InvalidSecretKeyError,
   MissingComposeVariablesError,
   NoSecretKeysError,
   ReferenceGuardError,
+  VersionKeyCollisionError,
+  VersionWithoutCommitError,
 } from '#env/env-references.ts'
 import {
   checkComposeVariables,
   defaultProviderName,
   guardFolder,
   renderEnvironment,
+  resolveVersion,
+  versionLine,
 } from '#env/env-references.ts'
 import type { EnvDiff } from '#env/env-diff.ts'
 import { diffEnv } from '#env/env-diff.ts'
@@ -90,6 +95,7 @@ export interface DeploymentPlan {
   readonly folder: string
   readonly keys: ReadonlyArray<string>
   readonly env: string
+  readonly version: Option.Option<AppVersion>
   readonly domains: ReadonlyArray<DesiredDomain>
   readonly changes: DeploymentChanges
   readonly unsupported: ReadonlyArray<string>
@@ -113,6 +119,8 @@ export type DeploymentPlanError =
   | MissingComposeVariablesError
   | InvalidSecretKeyError
   | NoSecretKeysError
+  | VersionWithoutCommitError
+  | VersionKeyCollisionError
 
 export interface DeploymentPlannerShape {
   readonly plan: Effect.Effect<DeploymentPlan, DeploymentPlanError>
@@ -231,9 +239,9 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     return pipe(
       this.listKeys(context),
       Effect.flatMap((keys) => this.renderPlan({ ...context, keys })),
-      Effect.tap(({ keys }) =>
+      Effect.tap(({ keys, version }) =>
         checkComposeVariables({
-          keys,
+          keys: [...keys, ...Option.toArray(version).map(({ key }) => key)],
           compose: manifest.composeFile,
           requiredVariables: compose.requiredVariables,
         }),
@@ -250,21 +258,37 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     target,
     keys,
   }: ResolvedEnvironment & { readonly keys: ReadonlyArray<string> }) {
+    const { inputs } = this.dependencies
     const provider = providerOf(environment)
     const { folder } = manifest.secrets
     return pipe(
-      renderEnvironment({ provider, folder, keys }),
-      Effect.flatMap((env) =>
+      Effect.all({
+        references: renderEnvironment({ provider, folder, keys }),
+        version: resolveVersion({
+          provider,
+          folder,
+          keys,
+          variable: inputs.versionEnv,
+          commit: inputs.commit,
+        }),
+      }),
+      Effect.map(({ references, version }) => ({
+        version,
+        env: `${references}${Option.match(version, { onNone: () => '', onSome: versionLine })}`,
+      })),
+      Effect.flatMap(({ env, version }) =>
         Effect.all({
           env: Effect.succeed(env),
+          version: Effect.succeed(version),
           changes: this.changesAgainst({ target, env, domains }),
         }),
       ),
-      Effect.map(({ env, changes }): DeploymentPlan => ({
+      Effect.map(({ env, version, changes }): DeploymentPlan => ({
         provider,
         folder,
         keys,
         env,
+        version,
         domains,
         changes,
         unsupported: routesWithAllowedMethods(domains),
@@ -272,7 +296,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
           routerHosts: compose.routerHosts,
           declaredHosts: manifestHosts(manifest),
         }),
-        environment: this.dependencies.inputs.environment,
+        environment: inputs.environment,
         dokploy: { ...environment.dokploy, ...target },
       })),
       Effect.withSpan('DeploymentPlanner.renderPlan'),
@@ -377,6 +401,7 @@ export class DeploymentPlanner extends Context.Service<
         folder: '/demo',
         keys: ['MESSAGE'],
         env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
+        version: Option.none(),
         domains: [],
         changes: {
           env: { drift: false, added: [], removed: [], changed: [] },
