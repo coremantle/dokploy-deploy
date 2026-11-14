@@ -12,7 +12,7 @@ import {
 
 import type { ActionInputsShape } from '#action-inputs.config.ts'
 import { ActionInputs } from '#action-inputs.config.ts'
-import type { ComposeFile } from '#compose/compose-file.ts'
+import type { ComposeFile, RouterHost } from '#compose/compose-file.ts'
 import type {
   DesiredDomain,
   DuplicateDomainError,
@@ -20,7 +20,9 @@ import type {
 } from '#domains/desired-domains.ts'
 import {
   desiredDomains,
+  manifestHosts,
   routesWithAllowedMethods,
+  strayRouterHosts,
 } from '#domains/desired-domains.ts'
 import type { DomainDiff } from '#domains/domain-diff.ts'
 import { diffDomains } from '#domains/domain-diff.ts'
@@ -91,6 +93,7 @@ export interface DeploymentPlan {
   readonly domains: ReadonlyArray<DesiredDomain>
   readonly changes: DeploymentChanges
   readonly unsupported: ReadonlyArray<string>
+  readonly strayRouterHosts: ReadonlyArray<RouterHost>
 }
 
 export interface DeploymentChanges {
@@ -242,6 +245,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   private renderPlan({
     manifest,
     environment,
+    compose,
     domains,
     target,
     keys,
@@ -264,6 +268,10 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
         domains,
         changes,
         unsupported: routesWithAllowedMethods(domains),
+        strayRouterHosts: strayRouterHosts({
+          routerHosts: compose.routerHosts,
+          declaredHosts: manifestHosts(manifest),
+        }),
         environment: this.dependencies.inputs.environment,
         dokploy: { ...environment.dokploy, ...target },
       })),
@@ -375,6 +383,7 @@ export class DeploymentPlanner extends Context.Service<
           domains: { create: [], update: [], delete: [], unchanged: [] },
         },
         unsupported: [],
+        strayRouterHosts: [],
       }),
       ...shape,
     })

@@ -1,9 +1,11 @@
-import { Array, Effect, Schema, pipe } from 'effect'
+import { Array, Effect, Record, Schema, pipe } from 'effect'
 
+import type { RouterHost } from '#compose/compose-file.ts'
 import { routeOf } from '#domains/domain-diff.ts'
 import type {
   CertificateType,
   HttpMethod,
+  Manifest,
   ManifestDomain,
 } from '#manifest/manifest.ts'
 
@@ -76,6 +78,42 @@ export function routesWithAllowedMethods(
   )
 }
 
+export function strayRouterHosts({
+  routerHosts,
+  declaredHosts,
+}: {
+  readonly routerHosts: ReadonlyArray<RouterHost>
+  readonly declaredHosts: ReadonlyArray<string>
+}): ReadonlyArray<RouterHost> {
+  const hosts = new Set(declaredHosts)
+  return Array.filter(routerHosts, ({ host }) => !hosts.has(host))
+}
+
+function hostOf({
+  subdomain,
+  parentDomain,
+}: {
+  readonly subdomain: string
+  readonly parentDomain: string
+}): string {
+  return `${subdomain}.${parentDomain}`
+}
+
+export function manifestHosts({
+  domains,
+  environments,
+}: Pick<Manifest, 'domains' | 'environments'>): ReadonlyArray<string> {
+  return pipe(
+    Record.values(environments),
+    Array.flatMap(({ domain: parentDomain }) =>
+      Array.map(domains, ({ subdomain }) =>
+        hostOf({ subdomain, parentDomain }),
+      ),
+    ),
+    Array.dedupe,
+  )
+}
+
 function desiredDomain({
   domain,
   parentDomain,
@@ -85,7 +123,7 @@ function desiredDomain({
 }): DesiredDomain {
   const { service, subdomain, allowedMethods, ...routing } = domain
   return {
-    host: `${subdomain}.${parentDomain}`,
+    host: hostOf({ subdomain, parentDomain }),
     serviceName: service,
     ...routing,
     ...(allowedMethods === undefined ? {} : { allowedMethods }),

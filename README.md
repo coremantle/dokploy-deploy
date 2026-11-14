@@ -101,9 +101,11 @@ only logs a warning: the step's result is the deployment's.
 ### The plan comment
 
 `plan` on a `pull_request` event comments its report on the pull request: the
-environment keys added, changed or removed, and the domains created, updated
-or deleted. One comment per environment and Dokploy compose, found again by
-a hidden marker at its start and edited in place on each push. It goes
+environment keys added, changed or removed, the domains created, updated
+or deleted, and the warnings (a Traefik router host the manifest does not
+declare, see [Restricting HTTP methods](#restricting-http-methods)). One
+comment per environment and Dokploy compose, found again by a hidden marker
+at its start and edited in place on each push. It goes
 through the forge's issue comment API, the same on GitHub and Forgejo, with
 the `token` input:
 
@@ -194,6 +196,11 @@ characters at most).
 9. **Diff**: the block is compared with the compose's current env
    (`compose.one`), and the manifest domains with the
    compose's domains (`domain.byComposeId`), matched by host and path.
+10. **Traefik label check** (a warning, never a failure), reported with the
+    plan once every step above has passed: every host named in a `Host(...)`
+    matcher of a `traefik.http.routers.<name>.rule` label of `composeFile` is
+    a domain host of the manifest — see
+    [Restricting HTTP methods](#restricting-http-methods).
 
 The block only holds references, never a value, so `plan` prints it. It is
 always single-quoted: Dokploy substitutes the value before parsing the block,
@@ -277,6 +284,22 @@ the entrypoint and certificate resolver names must match Dokploy's Traefik
 rules to restrict a path only. The labels live in the compose, not in the env
 or the domains: `plan` shows no change for them, and the next deploy makes
 them live.
+
+The host is thus written twice, in the labels and in the manifest, and a host
+renamed in one place only leaves the restriction on a host nothing routes to
+any more. `plan` and `apply` read every `traefik.http.routers.<name>.rule`
+label of `composeFile`'s services, under `labels` or `deploy.labels`, in the
+list (`- key=value`) or the map syntax; they take each host of its `Host(...)`
+matchers (`HostHeader(...)` too; backtick- or double-quoted, several per rule
+or per matcher), and **warn** — in the job log and in the plan comment — for
+each host that is a domain (`<subdomain>.<domain>`) of no environment of the
+manifest, naming the router and the service. A host of another environment
+is not reported: a compose shared by several environments can only name one
+of them unless the host comes from a `${VAR}`. The step does not fail on it.
+Labels of other routers, rules without a `Host(...)`, a `Host(...)` directly
+negated (`!Host(...)`), `HostRegexp(...)` and hosts built from a `${VAR}` are
+not checked; neither is the path. A `Host(...)` inside a negated group
+(`!(Host(...) || ...)`) is still read as a routed host.
 
 ### The deploy
 

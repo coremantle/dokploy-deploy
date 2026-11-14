@@ -14,7 +14,7 @@ inputs:
     required: false
     default: deploy/dokploy.yml
   mode:
-    description: "`plan` reads the manifest and Dokploy and reports what would change, without writing to Dokploy (on a pull request it also comments that report); `apply` writes the changes (the environment block when it differs, then the domains of the compose), then deploys the compose and waits for the result."
+    description: "`plan` reads the manifest and Dokploy and reports what would change, without writing to Dokploy (on a pull request it also comments that report), with a warning for each Traefik router host of the compose the manifest does not declare; `apply` writes the changes (the environment block when it differs, then the domains of the compose), then deploys the compose and waits for the result."
     required: false
     default: plan
   environment:

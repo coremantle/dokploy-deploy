@@ -47,6 +47,7 @@ const demoManifest: Manifest = {
 const demoCompose: ComposeFile = {
   services: ['hello'],
   requiredVariables: ['MESSAGE'],
+  routerHosts: [],
 }
 
 const demoProjects: ReadonlyArray<DokployProject> = [
@@ -208,6 +209,7 @@ describe('DeploymentPlanner', () => {
       expect(dokployCalls).toContain('compose.one compose-hello')
       expect(dokployCalls).toContain('domain.byComposeId compose-hello')
       expect(plan.unsupported).toEqual([])
+      expect(plan.strayRouterHosts).toEqual([])
     }),
   )
 
@@ -249,6 +251,77 @@ describe('DeploymentPlanner', () => {
 
       // Then: the route is reported as unsupported
       expect(plan.unsupported).toEqual(['hello.demo.example.com/'])
+    }),
+  )
+
+  effect('should report the router hosts the manifest does not declare', () =>
+    Effect.gen(function* () {
+      // Given: allow-list routers, one on the manifest's host, one on a renamed host
+      const compose: ComposeFile = {
+        ...demoCompose,
+        routerHosts: [
+          {
+            service: 'hello',
+            router: 'hello-methods-web',
+            host: 'hello.demo.example.com',
+          },
+          {
+            service: 'hello',
+            router: 'hello-methods-websecure',
+            host: 'hi.demo.example.com',
+          },
+        ],
+      }
+      const { layer } = plannerIn({ compose })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: only the renamed host is reported, and the plan still succeeds
+      expect(plan.strayRouterHosts).toEqual([
+        {
+          service: 'hello',
+          router: 'hello-methods-websecure',
+          host: 'hi.demo.example.com',
+        },
+      ])
+    }),
+  )
+
+  effect('should not report a router host of another environment', () =>
+    Effect.gen(function* () {
+      // Given: a router on the staging host, planned for production
+      const manifest: Manifest = {
+        ...demoManifest,
+        environments: {
+          ...demoManifest.environments,
+          staging: {
+            dokploy: {
+              project: 'Demo',
+              environment: 'staging',
+              compose: 'hello',
+            },
+            domain: 'staging.example.com',
+          },
+        },
+      }
+      const compose: ComposeFile = {
+        ...demoCompose,
+        routerHosts: [
+          {
+            service: 'hello',
+            router: 'hello-methods-web',
+            host: 'hello.staging.example.com',
+          },
+        ],
+      }
+      const { layer } = plannerIn({ manifest, compose })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: it is not reported
+      expect(plan.strayRouterHosts).toEqual([])
     }),
   )
 

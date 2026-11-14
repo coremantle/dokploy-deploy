@@ -20,6 +20,7 @@ import type {
   DeploymentPlannerShape,
 } from '#deployment-planner.ts'
 import { DeploymentPlanner } from '#deployment-planner.ts'
+import { routerHostLine } from '#compose/compose-file.ts'
 import { domainLine } from '#domains/domain-diff.ts'
 import { EffectLog, EffectService } from '#effect/index.ts'
 import { hasChanges, planMarker, renderPlanReport } from '#plan-report.ts'
@@ -149,6 +150,17 @@ class ManifestDeployAction implements DeployActionShape {
           : EffectLog.warning(
               'DeployAction found allowedMethods, which apply refuses',
               { routes: plan.unsupported },
+            ),
+      ),
+      Effect.andThen(() =>
+        plan.strayRouterHosts.length === 0
+          ? Effect.void
+          : EffectLog.warning(
+              'DeployAction found Traefik router hosts the manifest does not declare',
+              {
+                environment: plan.environment,
+                hosts: plan.strayRouterHosts.map(routerHostLine),
+              },
             ),
       ),
       Effect.withSpan('DeployAction.report'),

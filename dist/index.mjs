@@ -35625,13 +35625,41 @@ function routesWithAllowedMethods(domains) {
     Array_exports.map(routeOf)
   );
 }
+function strayRouterHosts({
+  routerHosts: routerHosts2,
+  declaredHosts
+}) {
+  const hosts = new Set(declaredHosts);
+  return Array_exports.filter(routerHosts2, ({ host }) => !hosts.has(host));
+}
+function hostOf({
+  subdomain,
+  parentDomain
+}) {
+  return `${subdomain}.${parentDomain}`;
+}
+function manifestHosts({
+  domains,
+  environments
+}) {
+  return pipe(
+    Record_exports.values(environments),
+    Array_exports.flatMap(
+      ({ domain: parentDomain }) => Array_exports.map(
+        domains,
+        ({ subdomain }) => hostOf({ subdomain, parentDomain })
+      )
+    ),
+    Array_exports.dedupe
+  );
+}
 function desiredDomain({
   domain,
   parentDomain
 }) {
   const { service: service3, subdomain, allowedMethods, ...routing } = domain;
   return {
-    host: `${subdomain}.${parentDomain}`,
+    host: hostOf({ subdomain, parentDomain }),
     serviceName: service3,
     ...routing,
     ...allowedMethods === void 0 ? {} : { allowedMethods }
@@ -36762,6 +36790,18 @@ var ComposeDocument = Schema_exports.Struct({
     Schema_exports.isMinProperties(1)
   )
 });
+var ListLabels = Schema_exports.Array(Schema_exports.Unknown);
+var Labels = Schema_exports.Union([
+  ListLabels,
+  Schema_exports.Record(Schema_exports.String, Schema_exports.Unknown)
+]);
+var LabelsHolder = Schema_exports.Struct({
+  labels: Schema_exports.optionalKey(Schema_exports.Unknown),
+  deploy: Schema_exports.optionalKey(Schema_exports.Unknown)
+});
+var routerRuleKey = /^traefik\.http\.routers\.([^.]+)\.rule$/iu;
+var hostMatcher = /(?<!!\s*)(?<!\w)Host(?:Header)?\s*\(([^)]*)\)/giu;
+var quotedHost = /`([^`]*)`|"([^"]*)"/gu;
 var interpolation = /\$\$|\$\{([A-Za-z_]\w*)(?:(:?[-+?])[^}]*)?\}|\$([A-Za-z_]\w*)/gu;
 var requiringModifiers = /* @__PURE__ */ new Set([void 0, "?", ":?"]);
 function scalarStrings(value5) {
@@ -36792,13 +36832,81 @@ function requiredVariables(document) {
     Array_exports.sort(Order_exports.String)
   );
 }
+function listLabel(label) {
+  const separator = label.indexOf("=");
+  if (separator === -1) return [];
+  return [[label.slice(0, separator).trim(), label.slice(separator + 1)]];
+}
+function labelEntries(labels2) {
+  if (Schema_exports.is(ListLabels)(labels2)) {
+    return pipe(
+      labels2,
+      Array_exports.filter(Predicate_exports.isString),
+      Array_exports.flatMap(listLabel)
+    );
+  }
+  return pipe(
+    Record_exports.toEntries(labels2),
+    Array_exports.filter(
+      (entry) => Predicate_exports.isString(entry[1])
+    )
+  );
+}
+function holderOf(value5) {
+  return Option_exports.getOrElse(
+    Schema_exports.decodeUnknownOption(LabelsHolder)(value5),
+    () => ({})
+  );
+}
+function labelsOf(labels2) {
+  return pipe(
+    Schema_exports.decodeUnknownOption(Labels)(labels2),
+    Option_exports.match({ onNone: () => [], onSome: labelEntries })
+  );
+}
+function hostsIn(rule) {
+  return pipe(
+    Array_exports.fromIterable(rule.matchAll(hostMatcher)),
+    Array_exports.flatMap(
+      ([, args2 = ""]) => Array_exports.fromIterable(args2.matchAll(quotedHost))
+    ),
+    Array_exports.map(
+      ([, backticked, doubleQuoted]) => (backticked ?? doubleQuoted ?? "").trim().toLowerCase().replace(/\.$/u, "")
+    ),
+    Array_exports.filter((host) => host.length > 0 && !host.includes("$"))
+  );
+}
+function serviceRouterHosts([service3, definition]) {
+  const { labels: labels2, deploy } = holderOf(definition);
+  return Array_exports.flatMap(
+    [...labelsOf(labels2), ...labelsOf(holderOf(deploy).labels)],
+    ([key5, rule]) => {
+      const router = routerRuleKey.exec(key5)?.[1];
+      if (router === void 0) return [];
+      return Array_exports.map(hostsIn(rule), (host) => ({ service: service3, router, host }));
+    }
+  );
+}
+function routerHosts(services) {
+  return pipe(
+    Record_exports.toEntries(services),
+    Array_exports.flatMap(serviceRouterHosts),
+    Array_exports.dedupeWith(
+      (self, that) => self.service === that.service && self.router === that.router && self.host === that.host
+    )
+  );
+}
+function routerHostLine({ service: service3, router, host }) {
+  return `${host} (router ${router} of service ${service3})`;
+}
 function composeFileFrom({
   document,
   decoded
 }) {
   return {
     services: pipe(Record_exports.keys(decoded.services), Array_exports.sort(Order_exports.String)),
-    requiredVariables: requiredVariables(document)
+    requiredVariables: requiredVariables(document),
+    routerHosts: routerHosts(decoded.services)
   };
 }
 
@@ -37046,6 +37154,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   renderPlan({
     manifest,
     environment,
+    compose: compose4,
     domains,
     target,
     keys: keys3
@@ -37068,6 +37177,10 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
         domains,
         changes,
         unsupported: routesWithAllowedMethods(domains),
+        strayRouterHosts: strayRouterHosts({
+          routerHosts: compose4.routerHosts,
+          declaredHosts: manifestHosts(manifest)
+        }),
         environment: this.dependencies.inputs.environment,
         dokploy: { ...environment.dokploy, ...target }
       })),
@@ -37163,7 +37276,8 @@ var DeploymentPlanner = class _DeploymentPlanner extends Context_exports.Service
         env: { drift: false, added: [], removed: [], changed: [] },
         domains: { create: [], update: [], delete: [], unchanged: [] }
       },
-      unsupported: []
+      unsupported: [],
+      strayRouterHosts: []
     }),
     ...shape
   });
@@ -37246,6 +37360,19 @@ function unsupportedSection({ unsupported: unsupported3 }) {
     `> \`allowedMethods\` is set on ${Array_exports.map(unsupported3, cell).join(", ")}: Dokploy's domain API has no such setting, so \`apply\` will refuse this manifest.`
   ];
 }
+function strayRouterHostsSection({ strayRouterHosts: strayRouterHosts2 }) {
+  if (strayRouterHosts2.length === 0) return [];
+  return [
+    "",
+    `> [!WARNING]`,
+    `> The Traefik labels of the compose file route hosts that no environment of the manifest declares as a domain: ${Array_exports.map(
+      strayRouterHosts2,
+      ({ service: service3, router, host }) => `${cell(host)} (router ${cell(router)} of service ${cell(service3)})`
+    ).join(
+      ", "
+    )}. A router written for a renamed host no longer matches it, so its rule (an HTTP method allow-list, say) no longer applies: fix the host in the labels or in the manifest.`
+  ];
+}
 function renderPlanReport(plan) {
   const { environment, dokploy } = plan;
   return [
@@ -37258,6 +37385,7 @@ function renderPlanReport(plan) {
     "",
     ...domainsSection(plan),
     ...unsupportedSection(plan),
+    ...strayRouterHostsSection(plan),
     ""
   ].join("\n");
 }
@@ -37772,6 +37900,15 @@ var ManifestDeployAction = class _ManifestDeployAction {
         () => plan.unsupported.length === 0 ? Effect_exports.void : effect_log_exports.warning(
           "DeployAction found allowedMethods, which apply refuses",
           { routes: plan.unsupported }
+        )
+      ),
+      Effect_exports.andThen(
+        () => plan.strayRouterHosts.length === 0 ? Effect_exports.void : effect_log_exports.warning(
+          "DeployAction found Traefik router hosts the manifest does not declare",
+          {
+            environment: plan.environment,
+            hosts: plan.strayRouterHosts.map(routerHostLine)
+          }
         )
       ),
       Effect_exports.withSpan("DeployAction.report")
