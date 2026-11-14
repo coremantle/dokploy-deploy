@@ -1,10 +1,12 @@
-import { describe, effect, expect } from '@effect/vitest'
+import { describe, effect, expect, it } from '@effect/vitest'
 import { Effect } from 'effect'
 
 import {
   DuplicateDomainError,
   UnknownComposeServiceError,
   desiredDomains,
+  manifestHosts,
+  strayRouterHosts,
 } from '#domains/desired-domains.ts'
 import type { ManifestDomain } from '#manifest/manifest.ts'
 
@@ -111,4 +113,87 @@ describe('desiredDomains', () => {
       )
     }),
   )
+})
+
+describe('strayRouterHosts', () => {
+  it('should report nothing when every router host is declared', () => {
+    // Given: a router of the allow-list on a host of the manifest
+    const routerHosts = [
+      {
+        service: 'template-storage',
+        router: 'assets-methods-web',
+        host: 'assets.template.example.com',
+      },
+    ]
+
+    // When: comparing them with the declared hosts
+    const stray = strayRouterHosts({
+      routerHosts,
+      declaredHosts: ['assets.template.example.com'],
+    })
+
+    // Then: nothing is reported
+    expect(stray).toEqual([])
+  })
+
+  it('should report a router host that is not declared', () => {
+    // Given: a router still written for the host before a rename
+    const renamed = {
+      service: 'template-storage',
+      router: 'assets-methods-web',
+      host: 'assets-old.template.example.com',
+    }
+
+    // When: comparing it with the declared hosts
+    const stray = strayRouterHosts({
+      routerHosts: [renamed],
+      declaredHosts: ['assets.template.example.com'],
+    })
+
+    // Then: that router host is reported
+    expect(stray).toEqual([renamed])
+  })
+
+  it('should report nothing for a compose without router labels', () => {
+    // Given: no router host at all
+    const routerHosts: ReadonlyArray<never> = []
+
+    // When: comparing them with the declared hosts
+    const stray = strayRouterHosts({
+      routerHosts,
+      declaredHosts: ['assets.template.example.com'],
+    })
+
+    // Then: nothing is reported
+    expect(stray).toEqual([])
+  })
+})
+
+describe('manifestHosts', () => {
+  it('should list the hosts of every environment once', () => {
+    // Given: two domains and two environments
+    const domains: readonly [ManifestDomain, ...Array<ManifestDomain>] = [
+      webDomain,
+      { ...webDomain, subdomain: 'api' },
+      { ...webDomain, path: '/v2' },
+    ]
+    const dokploy = { project: 'Template', environment: 'x', compose: 'web' }
+
+    // When: listing the hosts
+    const hosts = manifestHosts({
+      domains,
+      environments: {
+        production: { dokploy, domain: 'example.com' },
+        staging: { dokploy, domain: 'staging.example.com' },
+      },
+    })
+
+    // Then: each host of each environment is listed once
+    expect(hosts).toEqual([
+      'app.example.com',
+      'api.example.com',
+      'app.staging.example.com',
+      'api.staging.example.com',
+    ])
+  })
 })

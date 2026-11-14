@@ -41,6 +41,8 @@ const compose = `services:
     environment:
       MESSAGE: \${MESSAGE}
       LEVEL: \${LEVEL:-info}
+    labels:
+      - traefik.http.routers.hello-methods-web.rule=Host(\`hello.example.com\`) && !Method(\`GET\`)
   worker:
     image: worker
 `
@@ -127,7 +129,7 @@ describe('WorkspaceFiles', () => {
   )
 
   effect(
-    'should read the services and required variables of the compose file',
+    'should read the services, required variables and router hosts of the compose file',
     () =>
       Effect.gen(function* () {
         // Given: a compose file with two services
@@ -141,10 +143,17 @@ describe('WorkspaceFiles', () => {
           Effect.provide(layer),
         )
 
-        // Then: services and the variables without a default are listed
+        // Then: services, the variables without a default and the router hosts are listed
         expect(composeFile).toEqual({
           services: ['hello', 'worker'],
           requiredVariables: ['IMAGE_TAG', 'MESSAGE'],
+          routerHosts: [
+            {
+              service: 'hello',
+              router: 'hello-methods-web',
+              host: 'hello.example.com',
+            },
+          ],
         })
       }),
   )

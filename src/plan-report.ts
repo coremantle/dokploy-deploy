@@ -93,6 +93,21 @@ function unsupportedSection({ unsupported }: DeploymentPlan) {
   ]
 }
 
+function strayRouterHostsSection({ strayRouterHosts }: DeploymentPlan) {
+  if (strayRouterHosts.length === 0) return []
+  return [
+    '',
+    `> [!WARNING]`,
+    `> The Traefik labels of the compose file route hosts that no environment of the manifest declares as a domain: ${Array.map(
+      strayRouterHosts,
+      ({ service, router, host }) =>
+        `${cell(host)} (router ${cell(router)} of service ${cell(service)})`,
+    ).join(
+      ', ',
+    )}. A router written for a renamed host no longer matches it, so its rule (an HTTP method allow-list, say) no longer applies: fix the host in the labels or in the manifest.`,
+  ]
+}
+
 export function renderPlanReport(plan: DeploymentPlan): string {
   const { environment, dokploy } = plan
   return [
@@ -105,6 +120,7 @@ export function renderPlanReport(plan: DeploymentPlan): string {
     '',
     ...domainsSection(plan),
     ...unsupportedSection(plan),
+    ...strayRouterHostsSection(plan),
     '',
   ].join('\n')
 }

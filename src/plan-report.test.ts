@@ -130,4 +130,38 @@ describe('renderPlanReport', () => {
     )
     expect(report).toContain('`apply` would refuse this manifest.')
   })
+
+  it('should warn about router hosts that are not domains', () => {
+    // Given: an allow-list router left on a renamed host
+    const plan: DeploymentPlan = {
+      ...basePlan,
+      strayRouterHosts: [
+        {
+          service: 'storage',
+          router: 'assets-methods-web',
+          host: 'assets-old.demo.example.com',
+        },
+      ],
+    }
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: the warning names the host, the router and the service, and apply is not refused
+    expect(report).toContain(
+      'route hosts that no environment of the manifest declares as a domain: `assets-old.demo.example.com` (router `assets-methods-web` of service `storage`)',
+    )
+    expect(report).toContain('`apply` would change nothing.')
+  })
+
+  it('should not warn when every router host is a domain', () => {
+    // Given: a plan without stray router hosts
+    const plan = basePlan
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: there is no warning
+    expect(report).not.toContain('[!WARNING]')
+  })
 })

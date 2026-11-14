@@ -188,6 +188,41 @@ describe('DeployAction', () => {
     }),
   )
 
+  effect('should warn about the stray router hosts and still succeed', () =>
+    Effect.gen(function* () {
+      // Given: a plan with an allow-list router on a host the manifest lacks
+      const basePlan = yield* DeploymentPlanner.buildTestService().plan
+      const { layer, steps } = recordingAction({
+        inputs: { mode: 'plan' },
+        planner: {
+          plan: Effect.succeed({
+            ...basePlan,
+            strayRouterHosts: [
+              {
+                service: 'storage',
+                router: 'assets-methods-web',
+                host: 'assets-old.demo.example.com',
+              },
+            ],
+          }),
+        },
+      })
+
+      // When: running the action
+      yield* runAction(layer)
+
+      // Then: a warning names the host, its router and its service
+      const warnings = steps.filter(({ detail }) => detail.startsWith('Warn '))
+      expect(warnings).toHaveLength(1)
+      expect(warnings[0]?.detail).toContain(
+        'Traefik router hosts the manifest does not declare',
+      )
+      expect(warnings[0]?.detail).toContain(
+        'assets-old.demo.example.com (router assets-methods-web of service storage)',
+      )
+    }),
+  )
+
   effect('should comment the plan on a pull request', () =>
     Effect.gen(function* () {
       // Given: plan mode on a pull request
