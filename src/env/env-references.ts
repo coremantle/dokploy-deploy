@@ -1,4 +1,4 @@
-import { Array, Effect, Order, Schema, pipe } from 'effect'
+import { Array, Effect, Option, Order, Schema, pipe } from 'effect'
 
 const dotenvKey = /^[A-Za-z0-9_.-]+$/u
 
@@ -65,6 +65,41 @@ export class MissingComposeVariablesError extends Schema.TaggedError<MissingComp
   }
 }
 
+export class VersionWithoutCommitError extends Schema.TaggedError<VersionWithoutCommitError>()(
+  'VersionWithoutCommitError',
+  { key: Schema.String, message: Schema.String },
+) {
+  static forKey(key: string): VersionWithoutCommitError {
+    return new VersionWithoutCommitError({
+      key,
+      message: `version-env ${key} writes the commit being deployed, but the commit input is empty: pass the commit, or leave version-env empty`,
+    })
+  }
+}
+
+export class VersionKeyCollisionError extends Schema.TaggedError<VersionKeyCollisionError>()(
+  'VersionKeyCollisionError',
+  {
+    key: Schema.String,
+    provider: Schema.String,
+    folder: Schema.String,
+    message: Schema.String,
+  },
+) {
+  static forKey({
+    key,
+    provider,
+    folder,
+  }: ReferenceSource & { readonly key: string }): VersionKeyCollisionError {
+    return new VersionKeyCollisionError({
+      key,
+      provider,
+      folder,
+      message: `version-env ${key} is also a secret key that vault provider ${provider} lists in ${folder}: the action writes ${key} itself, so rename the secret or pick another version-env`,
+    })
+  }
+}
+
 export interface ReferenceSource {
   readonly provider: string
   readonly folder: string
@@ -74,6 +109,13 @@ export interface GuardedFolder {
   readonly folder: string
   readonly project: string
 }
+
+export interface AppVersion {
+  readonly key: string
+  readonly value: string
+}
+
+export const versionLength = 12
 
 const defaultProviderEnvironment = 'production'
 
@@ -138,10 +180,17 @@ function referenceLine({
 
 export function renderEnvironment({
   keys,
+  version = Option.none(),
   ...source
-}: ReferenceSource & { readonly keys: ReadonlyArray<string> }) {
+}: ReferenceSource & {
+  readonly keys: ReadonlyArray<string>
+  readonly version?: Option.Option<AppVersion>
+}) {
   const sortedKeys = pipe(keys, Array.dedupe, Array.sort(Order.String))
   const invalidKeys = Array.filter(sortedKeys, (key) => !dotenvKey.test(key))
+  const collision = Option.filter(version, ({ key }) =>
+    Array.contains(sortedKeys, key),
+  )
   return pipe(
     Effect.succeed(sortedKeys),
     Effect.filterOrFail(Array.isReadonlyArrayNonEmpty, () =>
@@ -151,11 +200,21 @@ export function renderEnvironment({
       () => Array.isReadonlyArrayEmpty(invalidKeys),
       () => InvalidSecretKeyError.forKeys(invalidKeys),
     ),
+    Effect.flatMap((validKeys) =>
+      Option.match(collision, {
+        onNone: () => Effect.succeed(validKeys),
+        onSome: ({ key }) =>
+          Effect.fail(VersionKeyCollisionError.forKey({ ...source, key })),
+      }),
+    ),
     Effect.map((validKeys) =>
-      Array.map(
-        validKeys,
-        (key) => `${referenceLine({ ...source, key })}\n`,
-      ).join(''),
+      [
+        ...Array.map(
+          validKeys,
+          (key) => `${referenceLine({ ...source, key })}\n`,
+        ),
+        ...Option.toArray(Option.map(version, versionLine)),
+      ].join(''),
     ),
     Effect.withSpan('EnvReferences.renderEnvironment', {
       attributes: { provider: source.provider, folder: source.folder },
@@ -186,4 +245,35 @@ export function checkComposeVariables({
       attributes: { compose },
     }),
   )
+}
+
+export function resolveVersion({
+  variable,
+  commit,
+}: {
+  readonly variable: Option.Option<string>
+  readonly commit: Option.Option<string>
+}) {
+  return pipe(
+    variable,
+    Option.match({
+      onNone: () => Effect.succeedNone,
+      onSome: (key) =>
+        pipe(
+          commit,
+          Effect.fromOption(() => VersionWithoutCommitError.forKey(key)),
+          Effect.map((sha) =>
+            Option.some<AppVersion>({
+              key,
+              value: sha.toLowerCase().slice(0, versionLength),
+            }),
+          ),
+        ),
+    }),
+    Effect.withSpan('EnvReferences.resolveVersion'),
+  )
+}
+
+function versionLine({ key, value }: AppVersion): string {
+  return `${key}=${value}\n`
 }

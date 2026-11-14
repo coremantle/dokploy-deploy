@@ -22,6 +22,10 @@ const web: DesiredDomain = {
 
 const desiredEnv = "MESSAGE='${{vault.infisical-demo./demo:MESSAGE}}'\n"
 
+function blockFor(version: string) {
+  return `${desiredEnv}APP_VERSION=${version}\n`
+}
+
 const basePlan = Effect.runSync(DeploymentPlanner.buildTestService().plan)
 
 interface FakeDokploy {
@@ -44,18 +48,20 @@ function planAgainst({
   world,
   desired = [web],
   unsupported = [],
+  env = desiredEnv,
 }: {
   readonly world: FakeDokploy
   readonly desired?: ReadonlyArray<DesiredDomain>
   readonly unsupported?: ReadonlyArray<string>
+  readonly env?: string
 }): DeploymentPlan {
   return {
     ...basePlan,
     unsupported,
-    env: desiredEnv,
+    env,
     domains: desired,
     changes: {
-      env: diffEnv({ current: world.env, desired: desiredEnv }),
+      env: diffEnv({ current: world.env, desired: env }),
       domains: diffDomains({ desired, current: world.domains }),
     },
   }
@@ -227,5 +233,42 @@ describe('DeploymentApplier', () => {
       expect(error).toEqual(failure)
       expect(writes).toEqual([])
     }),
+  )
+
+  effect(
+    'should save the version line once per commit, never on a re-run',
+    () =>
+      Effect.gen(function* () {
+        // Given: Dokploy holding the block of a first commit
+        const world = fakeDokploy({
+          env: blockFor('0123456789ab'),
+          domains: [],
+        })
+
+        // When: re-running the same commit, then applying the next one
+        yield* applyTo({
+          world,
+          plan: planAgainst({
+            world,
+            desired: [],
+            env: blockFor('0123456789ab'),
+          }),
+        })
+        const rerunWrites = [...world.writes]
+        const next = yield* applyTo({
+          world,
+          plan: planAgainst({
+            world,
+            desired: [],
+            env: blockFor('fedcba987654'),
+          }),
+        })
+
+        // Then: the re-run writes nothing, the new commit saves the block with its version
+        expect(rerunWrites).toEqual([])
+        expect(world.writes).toEqual(['compose.saveEnvironment'])
+        expect(next.env).toBe(true)
+        expect(world.env).toBe(blockFor('fedcba987654'))
+      }),
   )
 })

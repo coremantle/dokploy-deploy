@@ -142,3 +142,40 @@ jobs:
           test "$(grep -v 'compose.deploy' "$RUNNER_TEMP/fake-dokploy.log" | grep -c '^POST ')" = "$(cat "$RUNNER_TEMP/writes-after-first-apply")"
           test "$DEPLOYMENT_ID" = deployment-2
           test "$SHA" = "$GITHUB_SHA"
+
+      # Why: version-env is opt-in; turning it on must add the version line once, deploy and verify as before, then write nothing on a re-run.
+      - name: Apply with version-env
+        id: version
+        uses: ./
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
+        with:
+          api-url: https://localhost:8443/api
+          api-key: smoke-test-key-not-a-secret
+          manifest: .github/smoke/dokploy.yml
+          mode: apply
+          version-env: APP_VERSION
+
+      - name: The apply wrote the version line and verified the deployed commit
+        env:
+          SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          short_sha=$(printf '%s' "$GITHUB_SHA" | cut -c1-12)
+          grep -qx "env| APP_VERSION=$short_sha" "$RUNNER_TEMP/fake-dokploy.log"
+          test "$(grep -c '^POST /api/compose.saveEnvironment' "$RUNNER_TEMP/fake-dokploy.log")" = 2
+          test "$SHA" = "$GITHUB_SHA"
+
+      - name: Apply with version-env a second time
+        uses: ./
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
+        with:
+          api-url: https://localhost:8443/api
+          api-key: smoke-test-key-not-a-secret
+          manifest: .github/smoke/dokploy.yml
+          mode: apply
+          version-env: APP_VERSION
+          deploy: 'false'
+
+      - name: The second apply with version-env wrote nothing
+        run: test "$(grep -c '^POST /api/compose.saveEnvironment' "$RUNNER_TEMP/fake-dokploy.log")" = 2

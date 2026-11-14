@@ -90,6 +90,8 @@ const reads = {
 const writes = {
   '/api/compose.saveEnvironment': ({ env }) => {
     compose.env = env
+    // Why: the smoke test greps the saved block; it only ever holds references and the version line.
+    for (const line of env.split('\n').filter(Boolean)) console.log(`env| ${line}`)
     return true
   },
   '/api/domain.create': (domain) => {

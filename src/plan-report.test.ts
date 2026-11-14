@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 
 import type { DeploymentPlan } from '#deployment-planner.ts'
 import { DeploymentPlanner } from '#deployment-planner.ts'
@@ -163,5 +163,37 @@ describe('renderPlanReport', () => {
 
     // Then: there is no warning
     expect(report).not.toContain('[!WARNING]')
+  })
+
+  it('should show the version line the action writes', () => {
+    // Given: a plan with version-env, whose commit changed since the last apply
+    const plan: DeploymentPlan = {
+      ...basePlan,
+      version: Option.some({ key: 'APP_VERSION', value: '0123456789ab' }),
+      changes: {
+        ...basePlan.changes,
+        env: { drift: true, added: [], changed: ['APP_VERSION'], removed: [] },
+      },
+    }
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: the key change and the value written are both shown
+    expect(report).toContain('| change | `APP_VERSION` |')
+    expect(report).toContain(
+      '`APP_VERSION` is set to `0123456789ab`, the short sha of the `commit` input',
+    )
+  })
+
+  it('should not mention a version when version-env is off', () => {
+    // Given: a plan without version-env
+    const plan = basePlan
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: no version line is announced
+    expect(report).not.toContain('short sha')
   })
 })

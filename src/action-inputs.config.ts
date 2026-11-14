@@ -25,6 +25,7 @@ export const inputVariables = {
   deploy: 'DOKPLOY_DEPLOY_DEPLOY',
   commit: 'DOKPLOY_DEPLOY_COMMIT',
   deployTimeout: 'DOKPLOY_DEPLOY_DEPLOY_TIMEOUT',
+  versionEnv: 'DOKPLOY_DEPLOY_VERSION_ENV',
   outputFile: 'GITHUB_OUTPUT',
 } as const
 
@@ -69,6 +70,13 @@ function toggle(name: string) {
 const Commit = Schema.Trim.check(
   Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu, {
     message: 'a commit is a full 40- or 64-character hexadecimal sha',
+  }),
+)
+
+const VersionVariable = Schema.Trim.check(
+  Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+    message:
+      'version-env is a variable name: letters, digits and _, not starting with a digit',
   }),
 )
 
@@ -123,6 +131,7 @@ export interface ActionInputsShape {
   readonly deploy: boolean
   readonly commit: Option.Option<string>
   readonly deployTimeout: Duration.Duration
+  readonly versionEnv: Option.Option<string>
   readonly outputFile: Option.Option<string>
 }
 
@@ -167,6 +176,10 @@ export class ActionInputs extends Context.Service<
         Config.withDefault(defaultDeployTimeoutSeconds),
         Config.map((seconds) => Duration.seconds(seconds)),
       ),
+      versionEnv: optionalInput({
+        schema: VersionVariable,
+        name: inputVariables.versionEnv,
+      }),
       outputFile: optionalInput({
         schema: OutputFile,
         name: inputVariables.outputFile,
@@ -205,6 +218,7 @@ export class ActionInputs extends Context.Service<
       deploy: true,
       commit: Option.some(testCommit),
       deployTimeout: Duration.seconds(defaultDeployTimeoutSeconds),
+      versionEnv: Option.none(),
       outputFile: Option.none(),
       ...shape,
     })

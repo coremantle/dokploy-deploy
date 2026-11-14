@@ -1,4 +1,4 @@
-import { Array } from 'effect'
+import { Array, Option } from 'effect'
 
 import type { DeploymentPlan } from '#deployment-planner.ts'
 import type { DesiredDomain } from '#domains/desired-domains.ts'
@@ -36,7 +36,21 @@ export function hasChanges({ changes }: DeploymentPlan): boolean {
   return changes.env.drift || hasDomainChanges(changes.domains)
 }
 
-function envSection({ changes: { env } }: DeploymentPlan) {
+function versionNote({ version }: DeploymentPlan) {
+  return Option.match(version, {
+    onNone: () => [],
+    onSome: ({ key, value }) => [
+      '',
+      `${cell(key)} is set to ${cell(value)}, the short sha of the \`commit\` input — the commit \`apply\` deploys. The action writes this line itself; it is not a secret reference.`,
+    ],
+  })
+}
+
+function envSection(plan: DeploymentPlan) {
+  return [...envChanges(plan), ...versionNote(plan)]
+}
+
+function envChanges({ changes: { env } }: DeploymentPlan) {
   const rows = [
     ...Array.map(env.added, (key) => `| add | ${cell(key)} |`),
     ...Array.map(env.changed, (key) => `| change | ${cell(key)} |`),

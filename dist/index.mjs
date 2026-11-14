@@ -34382,6 +34382,7 @@ var inputVariables = {
   deploy: "DOKPLOY_DEPLOY_DEPLOY",
   commit: "DOKPLOY_DEPLOY_COMMIT",
   deployTimeout: "DOKPLOY_DEPLOY_DEPLOY_TIMEOUT",
+  versionEnv: "DOKPLOY_DEPLOY_VERSION_ENV",
   outputFile: "GITHUB_OUTPUT"
 };
 var defaultDeployTimeoutSeconds = 1800;
@@ -34417,6 +34418,11 @@ function toggle(name) {
 var Commit = Schema_exports.Trim.check(
   Schema_exports.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu, {
     message: "a commit is a full 40- or 64-character hexadecimal sha"
+  })
+);
+var VersionVariable = Schema_exports.Trim.check(
+  Schema_exports.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+    message: "version-env is a variable name: letters, digits and _, not starting with a digit"
   })
 );
 var TimeoutSeconds = Schema_exports.NumberFromString.check(
@@ -34481,6 +34487,10 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
         Config_exports.withDefault(defaultDeployTimeoutSeconds),
         Config_exports.map((seconds2) => Duration_exports.seconds(seconds2))
       ),
+      versionEnv: optionalInput({
+        schema: VersionVariable,
+        name: inputVariables.versionEnv
+      }),
       outputFile: optionalInput({
         schema: OutputFile,
         name: inputVariables.outputFile
@@ -34517,6 +34527,7 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
     deploy: true,
     commit: Option_exports.some(testCommit),
     deployTimeout: Duration_exports.seconds(defaultDeployTimeoutSeconds),
+    versionEnv: Option_exports.none(),
     outputFile: Option_exports.none(),
     ...shape
   });
@@ -36040,6 +36051,40 @@ var MissingComposeVariablesError = class _MissingComposeVariablesError extends S
     });
   }
 };
+var VersionWithoutCommitError = class _VersionWithoutCommitError extends Schema_exports.TaggedError()(
+  "VersionWithoutCommitError",
+  { key: Schema_exports.String, message: Schema_exports.String }
+) {
+  static forKey(key5) {
+    return new _VersionWithoutCommitError({
+      key: key5,
+      message: `version-env ${key5} writes the commit being deployed, but the commit input is empty: pass the commit, or leave version-env empty`
+    });
+  }
+};
+var VersionKeyCollisionError = class _VersionKeyCollisionError extends Schema_exports.TaggedError()(
+  "VersionKeyCollisionError",
+  {
+    key: Schema_exports.String,
+    provider: Schema_exports.String,
+    folder: Schema_exports.String,
+    message: Schema_exports.String
+  }
+) {
+  static forKey({
+    key: key5,
+    provider,
+    folder
+  }) {
+    return new _VersionKeyCollisionError({
+      key: key5,
+      provider,
+      folder,
+      message: `version-env ${key5} is also a secret key that vault provider ${provider} lists in ${folder}: the action writes ${key5} itself, so rename the secret or pick another version-env`
+    });
+  }
+};
+var versionLength = 12;
 var defaultProviderEnvironment = "production";
 var providerNameLength = 64;
 function dokploySlug(name) {
@@ -36082,10 +36127,15 @@ function referenceLine({
 }
 function renderEnvironment({
   keys: keys3,
+  version = Option_exports.none(),
   ...source
 }) {
   const sortedKeys2 = pipe(keys3, Array_exports.dedupe, Array_exports.sort(Order_exports.String));
   const invalidKeys = Array_exports.filter(sortedKeys2, (key5) => !dotenvKey.test(key5));
+  const collision = Option_exports.filter(
+    version,
+    ({ key: key5 }) => Array_exports.contains(sortedKeys2, key5)
+  );
   return pipe(
     Effect_exports.succeed(sortedKeys2),
     Effect_exports.filterOrFail(
@@ -36096,12 +36146,21 @@ function renderEnvironment({
       () => Array_exports.isReadonlyArrayEmpty(invalidKeys),
       () => InvalidSecretKeyError.forKeys(invalidKeys)
     ),
+    Effect_exports.flatMap(
+      (validKeys) => Option_exports.match(collision, {
+        onNone: () => Effect_exports.succeed(validKeys),
+        onSome: ({ key: key5 }) => Effect_exports.fail(VersionKeyCollisionError.forKey({ ...source, key: key5 }))
+      })
+    ),
     Effect_exports.map(
-      (validKeys) => Array_exports.map(
-        validKeys,
-        (key5) => `${referenceLine({ ...source, key: key5 })}
+      (validKeys) => [
+        ...Array_exports.map(
+          validKeys,
+          (key5) => `${referenceLine({ ...source, key: key5 })}
 `
-      ).join("")
+        ),
+        ...Option_exports.toArray(Option_exports.map(version, versionLine))
+      ].join("")
     ),
     Effect_exports.withSpan("EnvReferences.renderEnvironment", {
       attributes: { provider: source.provider, folder: source.folder }
@@ -36125,6 +36184,32 @@ function checkComposeVariables({
       attributes: { compose: compose4 }
     })
   );
+}
+function resolveVersion({
+  variable,
+  commit
+}) {
+  return pipe(
+    variable,
+    Option_exports.match({
+      onNone: () => Effect_exports.succeedNone,
+      onSome: (key5) => pipe(
+        commit,
+        Effect_exports.fromOption(() => VersionWithoutCommitError.forKey(key5)),
+        Effect_exports.map(
+          (sha) => Option_exports.some({
+            key: key5,
+            value: sha.toLowerCase().slice(0, versionLength)
+          })
+        )
+      )
+    }),
+    Effect_exports.withSpan("EnvReferences.resolveVersion")
+  );
+}
+function versionLine({ key: key5, value: value5 }) {
+  return `${key5}=${value5}
+`;
 }
 
 // src/env/env-diff.ts
@@ -37060,13 +37145,15 @@ var UnknownEnvironmentError = class _UnknownEnvironmentError extends Schema_expo
 };
 function selectEnvironment({
   manifest,
+  version,
   name
 }) {
   return pipe(
     Record_exports.get(manifest.environments, name),
     Option_exports.map((environment) => ({
       manifest,
-      environment
+      environment,
+      version
     })),
     Effect_exports.fromOption(
       () => UnknownEnvironmentError.notDeclared({
@@ -37095,9 +37182,16 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   buildPlan() {
     const { inputs, workspaceFiles } = this.dependencies;
     return pipe(
-      workspaceFiles.readManifest(inputs.manifest),
+      // Why: version-env without a commit is an input mistake — fail before reading the workspace or calling Dokploy.
+      Effect_exports.all({
+        version: resolveVersion({
+          variable: inputs.versionEnv,
+          commit: inputs.commit
+        }),
+        manifest: workspaceFiles.readManifest(inputs.manifest)
+      }),
       Effect_exports.flatMap(
-        (manifest) => selectEnvironment({ manifest, name: inputs.environment })
+        ({ manifest, version }) => selectEnvironment({ manifest, version, name: inputs.environment })
       ),
       Effect_exports.tap(
         ({ manifest, environment }) => guardFolder({
@@ -37114,7 +37208,11 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
       })
     );
   }
-  planEnvironment({ manifest, environment }) {
+  planEnvironment({
+    manifest,
+    environment,
+    version
+  }) {
     const { workspaceFiles } = this.dependencies;
     return pipe(
       workspaceFiles.readCompose(manifest.composeFile),
@@ -37131,7 +37229,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
         })
       ),
       Effect_exports.flatMap(
-        (resolved) => this.planKeys({ manifest, environment, ...resolved })
+        (resolved) => this.planKeys({ manifest, environment, version, ...resolved })
       ),
       Effect_exports.withSpan("DeploymentPlanner.planEnvironment")
     );
@@ -37142,8 +37240,8 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
       this.listKeys(context3),
       Effect_exports.flatMap((keys3) => this.renderPlan({ ...context3, keys: keys3 })),
       Effect_exports.tap(
-        ({ keys: keys3 }) => checkComposeVariables({
-          keys: keys3,
+        ({ keys: keys3, version }) => checkComposeVariables({
+          keys: [...keys3, ...Option_exports.toArray(version).map(({ key: key5 }) => key5)],
           compose: manifest.composeFile,
           requiredVariables: compose4.requiredVariables
         })
@@ -37154,6 +37252,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   renderPlan({
     manifest,
     environment,
+    version,
     compose: compose4,
     domains,
     target,
@@ -37162,7 +37261,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
     const provider = providerOf(environment);
     const { folder } = manifest.secrets;
     return pipe(
-      renderEnvironment({ provider, folder, keys: keys3 }),
+      renderEnvironment({ provider, folder, keys: keys3, version }),
       Effect_exports.flatMap(
         (env) => Effect_exports.all({
           env: Effect_exports.succeed(env),
@@ -37174,6 +37273,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
         folder,
         keys: keys3,
         env,
+        version,
         domains,
         changes,
         unsupported: routesWithAllowedMethods(domains),
@@ -37271,6 +37371,7 @@ var DeploymentPlanner = class _DeploymentPlanner extends Context_exports.Service
       folder: "/demo",
       keys: ["MESSAGE"],
       env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
+      version: Option_exports.none(),
       domains: [],
       changes: {
         env: { drift: false, added: [], removed: [], changed: [] },
@@ -37310,7 +37411,19 @@ function headline(plan) {
 function hasChanges({ changes }) {
   return changes.env.drift || hasDomainChanges(changes.domains);
 }
-function envSection({ changes: { env } }) {
+function versionNote({ version }) {
+  return Option_exports.match(version, {
+    onNone: () => [],
+    onSome: ({ key: key5, value: value5 }) => [
+      "",
+      `${cell(key5)} is set to ${cell(value5)}, the short sha of the \`commit\` input \u2014 the commit \`apply\` deploys. The action writes this line itself; it is not a secret reference.`
+    ]
+  });
+}
+function envSection(plan) {
+  return [...envChanges(plan), ...versionNote(plan)];
+}
+function envChanges({ changes: { env } }) {
   const rows = [
     ...Array_exports.map(env.added, (key5) => `| add | ${cell(key5)} |`),
     ...Array_exports.map(env.changed, (key5) => `| change | ${cell(key5)} |`),

@@ -40,16 +40,20 @@ import type {
 import { findVaultProvider, resolveTarget } from '#dokploy/dokploy-target.ts'
 import { EffectService } from '#effect/index.ts'
 import type {
+  AppVersion,
   InvalidSecretKeyError,
   MissingComposeVariablesError,
   NoSecretKeysError,
   ReferenceGuardError,
+  VersionKeyCollisionError,
+  VersionWithoutCommitError,
 } from '#env/env-references.ts'
 import {
   checkComposeVariables,
   defaultProviderName,
   guardFolder,
   renderEnvironment,
+  resolveVersion,
 } from '#env/env-references.ts'
 import type { EnvDiff } from '#env/env-diff.ts'
 import { diffEnv } from '#env/env-diff.ts'
@@ -90,6 +94,7 @@ export interface DeploymentPlan {
   readonly folder: string
   readonly keys: ReadonlyArray<string>
   readonly env: string
+  readonly version: Option.Option<AppVersion>
   readonly domains: ReadonlyArray<DesiredDomain>
   readonly changes: DeploymentChanges
   readonly unsupported: ReadonlyArray<string>
@@ -113,6 +118,8 @@ export type DeploymentPlanError =
   | MissingComposeVariablesError
   | InvalidSecretKeyError
   | NoSecretKeysError
+  | VersionWithoutCommitError
+  | VersionKeyCollisionError
 
 export interface DeploymentPlannerShape {
   readonly plan: Effect.Effect<DeploymentPlan, DeploymentPlanError>
@@ -127,13 +134,16 @@ interface DeploymentPlannerDependencies {
 interface SelectedEnvironment {
   readonly manifest: Manifest
   readonly environment: ManifestEnvironment
+  readonly version: Option.Option<AppVersion>
 }
 
 function selectEnvironment({
   manifest,
+  version,
   name,
 }: {
   readonly manifest: Manifest
+  readonly version: Option.Option<AppVersion>
   readonly name: string
 }) {
   return pipe(
@@ -141,6 +151,7 @@ function selectEnvironment({
     Option.map((environment): SelectedEnvironment => ({
       manifest,
       environment,
+      version,
     })),
     Effect.fromOption(() =>
       UnknownEnvironmentError.notDeclared({
@@ -183,9 +194,16 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   private buildPlan() {
     const { inputs, workspaceFiles } = this.dependencies
     return pipe(
-      workspaceFiles.readManifest(inputs.manifest),
-      Effect.flatMap((manifest) =>
-        selectEnvironment({ manifest, name: inputs.environment }),
+      // Why: version-env without a commit is an input mistake — fail before reading the workspace or calling Dokploy.
+      Effect.all({
+        version: resolveVersion({
+          variable: inputs.versionEnv,
+          commit: inputs.commit,
+        }),
+        manifest: workspaceFiles.readManifest(inputs.manifest),
+      }),
+      Effect.flatMap(({ manifest, version }) =>
+        selectEnvironment({ manifest, version, name: inputs.environment }),
       ),
       Effect.tap(({ manifest, environment }) =>
         guardFolder({
@@ -203,7 +221,11 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     )
   }
 
-  private planEnvironment({ manifest, environment }: SelectedEnvironment) {
+  private planEnvironment({
+    manifest,
+    environment,
+    version,
+  }: SelectedEnvironment) {
     const { workspaceFiles } = this.dependencies
     return pipe(
       workspaceFiles.readCompose(manifest.composeFile),
@@ -220,7 +242,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
         }),
       ),
       Effect.flatMap((resolved) =>
-        this.planKeys({ manifest, environment, ...resolved }),
+        this.planKeys({ manifest, environment, version, ...resolved }),
       ),
       Effect.withSpan('DeploymentPlanner.planEnvironment'),
     )
@@ -231,9 +253,9 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     return pipe(
       this.listKeys(context),
       Effect.flatMap((keys) => this.renderPlan({ ...context, keys })),
-      Effect.tap(({ keys }) =>
+      Effect.tap(({ keys, version }) =>
         checkComposeVariables({
-          keys,
+          keys: [...keys, ...Option.toArray(version).map(({ key }) => key)],
           compose: manifest.composeFile,
           requiredVariables: compose.requiredVariables,
         }),
@@ -245,6 +267,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   private renderPlan({
     manifest,
     environment,
+    version,
     compose,
     domains,
     target,
@@ -253,7 +276,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     const provider = providerOf(environment)
     const { folder } = manifest.secrets
     return pipe(
-      renderEnvironment({ provider, folder, keys }),
+      renderEnvironment({ provider, folder, keys, version }),
       Effect.flatMap((env) =>
         Effect.all({
           env: Effect.succeed(env),
@@ -265,6 +288,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
         folder,
         keys,
         env,
+        version,
         domains,
         changes,
         unsupported: routesWithAllowedMethods(domains),
@@ -377,6 +401,7 @@ export class DeploymentPlanner extends Context.Service<
         folder: '/demo',
         keys: ['MESSAGE'],
         env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
+        version: Option.none(),
         domains: [],
         changes: {
           env: { drift: false, added: [], removed: [], changed: [] },
