@@ -5038,7 +5038,7 @@ var init_tracer = __esm({
 function interruptChildrenPatch() {
   fiberMiddleware.interruptChildren ??= fiberInterruptChildren;
 }
-var Interrupt, makeInterruptReason, causeInterrupt, hasFails, findFail, findError, findErrorOption, hasDies, causeElectDefects, findRecoverableError, findDie, findDefect, hasInterrupts, findInterrupt, causeFilterInterruptors, causeInterruptors, emptySet, hasInterruptsOnly, reasonAnnotations, causeAnnotations, causeMap, causeSquash, causePrettyErrors, causePrettyError, causePrettyMessage, locationRegExp, cleanErrorStack, addStackAnnotations, interruptCauseStack, currentStackTrace, causePretty, renderPrettyError, renderErrorCause, FiberTypeId, fiberVariance, fiberIdStore, AsyncResource, captureAsyncContext, getCurrentFiber, FiberImpl, makeFiberContextCache, deferredInterruptCont, maxInlineSteps, fiberMiddleware, fiberStackAnnotations, fiberInterruptChildren, fiberAwait, fiberAwaitAll, fiberJoin, fiberInterrupt, fiberInterruptAs, fiberInterruptAll, succeed3, failCause, fail3, sync, suspend, fromOption4, fromResult, fromNullishOr3, yieldNowWith, yieldNow, succeedSome, succeedNone, transposeOption, failCauseSync, die, failSync, void_2, try_2, promise, tryPromise, withFiberId, fiber, fiberId, callbackOptions, asyncFinalizer, callback, never, gen2, fnBody, fnUntraced, defineFunctionLength, fnStackCleaner, fn, makeFn, fnUntracedEager, fromIteratorEagerUnsafe, fromIteratorUnsafe, as2, evaluateCont, OnSuccessProto, ContImpl, returnPayload, succeedPayload, continuationMarksStack, mapCont, andThenCont, tapCont, tapEffectCont, asSome, flip2, andThen2, tap2, asVoid2, sandbox, raceAll, raceAllFirst, interruptRaceLosers, race, raceFirst, flatMap4, matchCauseEffectEager, effectIsExit, flatMapEager, flatten4, map5, mapEager, mapErrorEager, mapBothEager, catchEager, exitInterrupt, exitIsSuccess, exitIsFailure, exitFilterCause, exitHasInterrupts, exitVoid, exitMap, exitMapError, exitMapBoth, exitZipRight, exitAsVoidAll, service, serviceOption, serviceOptional, updateContext, updateService, updateServiceScoped, context, getContext, contextWith, setContext, provideContext, provideService, provideServiceImpl, provideServiceEffect, zip2, zipWith3, filterOrFail, when, replicate2, replicateEffect, forever, catchCause, OnFailureProto, OnFailureImpl, catchCauseIf, catchCauseFilter, catch_, catchNoSuchElement, catchDefect, tapCause, tapCauseIf, tapCauseFilter, tapError, tapErrorTag, tapDefect, catchIf, catchFilter, catchTag, catchTags, catchReason, catchReasons, unwrapReason, mapError2, mapBoth, orDie, orElseSucceed, firstSuccessOf, eventually, ignoreCauseLogger, ignore, ignoreCause, option, result, matchCauseEffect, OnSuccessAndFailureProto, OnSuccessAndFailureImpl, matchSuccess, makeMatch, MatchImpl, MatchCauseImpl, matchCause, matchEffect, match5, matchEager, matchCauseEager, exit, exitPrimitive, isFailure3, isSuccess3, delay, timeoutOrElse, timeoutErrorFromDuration, timeout, timeoutOption, timed, ScopeTypeId, ScopeCloseableTypeId, scopeTag, scopeClose, scopeCloseUnsafe, runFinalizer, combineFinalizerCause, scopeCloseFinalizers, scopeForkUnsafe, scopeAddFinalizerExit, scopeAddFinalizer, scopeAddFinalizerUnsafe, scopeRemoveFinalizerUnsafe, scopeMakeUnsafe, makeScope, constScopeEmpty, scope, provideScope, scoped, scopedWith, acquireRelease, addFinalizer, OnExitImpl, onExitPrimitive, onExitUnsafe, onExit, ensuring, onExitIf, onExitFilter, onError, onErrorIf, onErrorFilter, onInterrupt, acquireUseRelease, acquireDisposable, cachedInvalidateWithTTL, infiniteTTL, makeCachedUnsafe, cachedWithTTL, cached, interrupt, uninterruptible, setInterruptible, setInterruptibleTrue, setInterruptibleFalse, setFiberInterruptible, fiberEnterUninterruptibleUnsafe, interruptible, uninterruptibleMask, interruptibleMask, abortSignal, all3, partition3, reduce3, validate, findFirst4, findFirstLoop, findFirstFilter, findFirstFilterLoop, whileLoop, forEach2, head2, forEachSequential, resolveConcurrency, iterateEager, iterateConcurrentImpl, iterateConcurrent, forEachConcurrent, filterOrElse, filterMapOrElse, filterMapOrFail, filter5, filterMap4, filterMapEffect, Do3, bindTo4, bind4, let_4, forkChild, forkUnsafe, forkDetach, awaitAllChildren, fiberScopeFinalizer, forkIn, forkScoped, runForkWith, runFork, runCallbackWith, runCallback, runPromiseExitWith, runPromiseExit, runPromiseWith, runPromise, runSyncExitWith, runSyncExit, runSyncWith, runSync, succeedTrue, succeedFalse, Latch, makeLatchUnsafe, tracer, withTracer, withTracerEnabled, withTracerTiming, bigint02, NoopSpanProto, noopSpan, filterDisablePropagation, makeSpanUnsafe, makeSpan, makeSpanScoped, withSpanScoped, provideSpanStackFrame, spanAnnotations, spanLinks, linkSpans, endSpan, useSpan, provideParentSpan, withParentSpan, withSpan, annotateSpans, annotateCurrentSpan, currentSpan, currentParentSpan, ClockRef, MAX_TIMER_MILLIS, ClockImpl, nanosPerMilli, monotonicNowNanos, wallTimeNanos, clockWith, sleep, currentTimeMillis, TimeoutErrorTypeId, isTimeoutError, TimeoutError, IllegalArgumentErrorTypeId, isIllegalArgumentError, IllegalArgumentError, ExceededCapacityErrorTypeId, isExceededCapacityError, ExceededCapacityError, AsyncFiberErrorTypeId, isAsyncFiberError, AsyncFiberError, UnknownErrorTypeId, isUnknownError, UnknownError, ConsoleRef, logLevelToOrder, LogLevelOrder, isLogLevelGreaterThan, CurrentLoggers, LogToStderr, annotateLogsScoped, LoggerTypeId, LoggerProto, loggerMake, formatLabel, formatLogSpan, structuredMessage, logWithLevel, withColor, withColorNoop, colors, logLevelColors, logLevelStyle, defaultDateFormat, consolePretty, prettyLoggerTty, prettyLoggerBrowser, defaultLogger, tracerLogger, undefined_, withErrorReporting, reportCauseUnsafe;
+var Interrupt, makeInterruptReason, causeInterrupt, hasFails, findFail, findError, findErrorOption, hasDies, causeElectDefects, findRecoverableError, findDie, findDefect, hasInterrupts, findInterrupt, causeFilterInterruptors, causeInterruptors, emptySet, hasInterruptsOnly, reasonAnnotations, causeAnnotations, causeMap, causeSquash, causePrettyErrors, causePrettyError, causePrettyMessage, locationRegExp, cleanErrorStack, addStackAnnotations, interruptCauseStack, currentStackTrace, causePretty, renderPrettyError, renderErrorCause, FiberTypeId, fiberVariance, fiberIdStore, AsyncResource, captureAsyncContext, getCurrentFiber, FiberImpl, makeFiberContextCache, deferredInterruptCont, maxInlineSteps, fiberMiddleware, fiberStackAnnotations, fiberInterruptChildren, fiberAwait, fiberAwaitAll, fiberJoin, fiberInterrupt, fiberInterruptAs, fiberInterruptAll, succeed3, failCause, fail3, sync, suspend, fromOption4, fromResult, fromNullishOr3, yieldNowWith, yieldNow, succeedSome, succeedNone, transposeOption, failCauseSync, die, failSync, void_2, try_2, promise, tryPromise, withFiberId, fiber, fiberId, callbackOptions, asyncFinalizer, callback, never, gen2, fnBody, fnUntraced, defineFunctionLength, fnStackCleaner, fn, makeFn, fnUntracedEager, fromIteratorEagerUnsafe, fromIteratorUnsafe, as2, evaluateCont, OnSuccessProto, ContImpl, returnPayload, succeedPayload, continuationMarksStack, mapCont, andThenCont, tapCont, tapEffectCont, asSome, flip2, andThen2, tap2, asVoid2, sandbox, raceAll, raceAllFirst, interruptRaceLosers, race, raceFirst, flatMap4, matchCauseEffectEager, effectIsExit, flatMapEager, flatten4, map5, mapEager, mapErrorEager, mapBothEager, catchEager, exitInterrupt, exitIsSuccess, exitIsFailure, exitFilterCause, exitHasInterrupts, exitVoid, exitMap, exitMapError, exitMapBoth, exitZipRight, exitAsVoidAll, service, serviceOption, serviceOptional, updateContext, updateService, updateServiceScoped, context, getContext, contextWith, setContext, provideContext, provideService, provideServiceImpl, provideServiceEffect, zip2, zipWith3, filterOrFail, when, replicate2, replicateEffect, forever, catchCause, OnFailureProto, OnFailureImpl, catchCauseIf, catchCauseFilter, catch_, catchNoSuchElement, catchDefect, tapCause, tapCauseIf, tapCauseFilter, tapError, tapErrorTag, tapDefect, catchIf, catchFilter, catchTag, catchTags, catchReason, catchReasons, unwrapReason, mapError2, mapBoth, orDie, orElseSucceed, firstSuccessOf, eventually, ignoreCauseLogger, ignore, ignoreCause, option, result, matchCauseEffect, OnSuccessAndFailureProto, OnSuccessAndFailureImpl, matchSuccess, makeMatch, MatchImpl, MatchCauseImpl, matchCause, matchEffect, match5, matchEager, matchCauseEager, exit, exitPrimitive, isFailure3, isSuccess3, delay, timeoutOrElse, timeoutErrorFromDuration, timeout, timeoutOption, timed, ScopeTypeId, ScopeCloseableTypeId, scopeTag, scopeClose, scopeCloseUnsafe, runFinalizer, combineFinalizerCause, scopeCloseFinalizers, scopeForkUnsafe, scopeAddFinalizerExit, scopeAddFinalizer, scopeAddFinalizerUnsafe, scopeRemoveFinalizerUnsafe, scopeMakeUnsafe, makeScope, constScopeEmpty, scope, provideScope, scoped, scopedWith, acquireRelease, addFinalizer, OnExitImpl, onExitPrimitive, onExitUnsafe, onExit, ensuring, onExitIf, onExitFilter, onError, onErrorIf, onErrorFilter, onInterrupt, acquireUseRelease, acquireDisposable, cachedInvalidateWithTTL, infiniteTTL, makeCachedUnsafe, cachedWithTTL, cached, interrupt, uninterruptible, setInterruptible, setInterruptibleTrue, setInterruptibleFalse, setFiberInterruptible, fiberEnterUninterruptibleUnsafe, interruptible, uninterruptibleMask, interruptibleMask, abortSignal, all3, partition3, reduce3, validate, findFirst4, findFirstLoop, findFirstFilter, findFirstFilterLoop, whileLoop, forEach2, head2, forEachSequential, resolveConcurrency, iterateEager, iterateConcurrentImpl, iterateConcurrent, forEachConcurrent, filterOrElse, filterMapOrElse, filterMapOrFail, filter5, filterMap4, filterMapEffect, Do3, bindTo4, bind4, let_4, forkChild, forkUnsafe, forkDetach, awaitAllChildren, fiberScopeFinalizer, forkIn, forkScoped, runForkWith, runFork, runCallbackWith, runCallback, runPromiseExitWith, runPromiseExit, runPromiseWith, runPromise, runSyncExitWith, runSyncExit, runSyncWith, runSync, succeedTrue, succeedFalse, Latch, makeLatchUnsafe, tracer, withTracer, withTracerEnabled, withTracerTiming, bigint02, NoopSpanProto, noopSpan, filterDisablePropagation, makeSpanUnsafe, makeSpan, makeSpanScoped, withSpanScoped, provideSpanStackFrame, spanAnnotations, spanLinks, linkSpans, endSpan, useSpan, provideParentSpan, withParentSpan, withSpan, annotateSpans, annotateCurrentSpan, currentSpan, currentParentSpan, ClockRef, MAX_TIMER_MILLIS, ClockImpl, nanosPerMilli, monotonicNowNanos, wallTimeNanos, clockWith, sleep, currentTimeMillis, currentTimeNanos, monotonicTimeNanos, TimeoutErrorTypeId, isTimeoutError, TimeoutError, IllegalArgumentErrorTypeId, isIllegalArgumentError, IllegalArgumentError, ExceededCapacityErrorTypeId, isExceededCapacityError, ExceededCapacityError, AsyncFiberErrorTypeId, isAsyncFiberError, AsyncFiberError, UnknownErrorTypeId, isUnknownError, UnknownError, ConsoleRef, logLevelToOrder, LogLevelOrder, isLogLevelGreaterThan, CurrentLoggers, LogToStderr, annotateLogsScoped, LoggerTypeId, LoggerProto, loggerMake, formatLabel, formatLogSpan, structuredMessage, logWithLevel, withColor, withColorNoop, colors, logLevelColors, logLevelStyle, defaultDateFormat, consolePretty, prettyLoggerTty, prettyLoggerBrowser, defaultLogger, tracerLogger, undefined_, withErrorReporting, reportCauseUnsafe;
 var init_effect = __esm({
   "node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/internal/effect.js"() {
     init_Array();
@@ -7527,6 +7527,8 @@ ${prefix}}`;
     clockWith = (f) => withFiber((fiber3) => f(fiber3.getRef(ClockRef)));
     sleep = (duration2) => clockWith((clock) => clock.sleep(fromInputUnsafe(duration2)));
     currentTimeMillis = /* @__PURE__ */ clockWith((clock) => clock.currentTimeMillis);
+    currentTimeNanos = /* @__PURE__ */ clockWith((clock) => clock.currentTimeNanos);
+    monotonicTimeNanos = /* @__PURE__ */ clockWith((clock) => clock.monotonicTimeNanos);
     TimeoutErrorTypeId = "~effect/Cause/TimeoutError";
     isTimeoutError = (u) => hasProperty(u, TimeoutErrorTypeId);
     TimeoutError = class extends (/* @__PURE__ */ TaggedError("TimeoutError")) {
@@ -8454,11 +8456,23 @@ var init_Cause = __esm({
 });
 
 // node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/Clock.js
-var Clock;
+var Clock_exports = {};
+__export(Clock_exports, {
+  Clock: () => Clock,
+  clockWith: () => clockWith2,
+  currentTimeMillis: () => currentTimeMillis2,
+  currentTimeNanos: () => currentTimeNanos2,
+  monotonicTimeNanos: () => monotonicTimeNanos2
+});
+var Clock, clockWith2, currentTimeMillis2, currentTimeNanos2, monotonicTimeNanos2;
 var init_Clock = __esm({
   "node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/Clock.js"() {
     init_effect();
     Clock = ClockRef;
+    clockWith2 = clockWith;
+    currentTimeMillis2 = currentTimeMillis;
+    currentTimeNanos2 = currentTimeNanos;
+    monotonicTimeNanos2 = monotonicTimeNanos;
   }
 });
 
@@ -10649,7 +10663,7 @@ __export(Effect_exports, {
   catchReasons: () => catchReasons2,
   catchTag: () => catchTag3,
   catchTags: () => catchTags2,
-  clockWith: () => clockWith2,
+  clockWith: () => clockWith3,
   context: () => context2,
   contextWith: () => contextWith2,
   currentParentSpan: () => currentParentSpan2,
@@ -10862,7 +10876,7 @@ function clearTransaction(state) {
   state.retry = false;
   state.journal.clear();
 }
-var TypeId15, isEffect2, all4, partition4, reduce4, validate2, findFirst5, findFirstFilter2, forEach3, head3, whileLoop2, promise2, tryPromise2, succeed6, succeedNone2, succeedSome2, suspend3, sync3, void_4, undefined_2, callback2, never2, Do4, bindTo5, let_5, bind5, gen3, fail6, failSync2, failCause3, failCauseSync2, die3, try_3, yieldNow2, yieldNowWith2, withFiber2, withFiberSucceed2, fromResult2, fromOption5, transposeOption2, fromNullishOr4, flatMap6, flatten5, andThen3, tap5, result2, option2, exit2, map8, as3, asSome2, asVoid3, flip3, zip3, zipWith4, catch_3, catchTag3, catchTags2, catchReason2, catchReasons2, unwrapReason2, catchCause3, catchDefect2, catchIf2, catchFilter2, catchNoSuchElement2, catchCauseIf2, catchCauseFilter2, mapError3, mapBoth2, orDie3, tapError3, tapErrorTag2, tapCause3, tapCauseIf2, tapCauseFilter2, tapDefect2, eventually2, retry2, retryOrElse2, sandbox2, ignore2, ignoreCause2, withExecutionPlan2, withErrorReporting2, orElseSucceed2, firstSuccessOf2, timeout2, timeoutOption2, timeoutOrElse2, delay2, sleep2, timed2, raceAll2, raceAllFirst2, race2, raceFirst2, filter6, filterMap5, filterMapEffect2, filterOrElse2, filterMapOrElse2, filterOrFail2, filterMapOrFail2, when2, match6, matchEager2, matchCause2, matchCauseEager2, matchCauseEffectEager2, matchCauseEffect2, matchEffect3, isFailure5, isSuccess5, context2, contextWith2, provide4, provideContext2, setContext2, service2, serviceOption2, updateContext2, updateService3, updateServiceScoped2, provideService2, provideServiceEffect2, scope2, scoped2, scopedWith2, acquireRelease2, acquireDisposable2, acquireUseRelease2, addFinalizer3, ensuring2, onError2, onErrorIf2, onErrorFilter2, onExitPrimitive2, onExit2, onExitIf2, onExitFilter2, cached2, cachedWithTTL2, cachedInvalidateWithTTL2, interrupt3, interruptible2, onInterrupt2, uninterruptible2, uninterruptibleMask2, interruptibleMask2, abortSignal2, forever3, repeat2, repeatOrElse2, replicate3, replicateEffect2, schedule, scheduleFrom2, tracer2, withTracer2, withTracerEnabled2, withTracerTiming2, annotateSpans2, annotateCurrentSpan2, currentSpan2, currentParentSpan2, spanAnnotations2, spanLinks2, linkSpans2, makeSpan2, makeSpanScoped2, useSpan2, withSpan3, withSpanScoped2, withParentSpan3, request2, requestUnsafe2, forkChild2, forkIn2, forkScoped2, forkDetach2, awaitAllChildren2, fiber2, fiberId2, runFork2, runForkWith2, runCallbackWith2, runCallback2, runPromise2, runPromiseWith2, runPromiseExit2, runPromiseExitWith2, runSync2, runSyncWith2, runSyncExit2, runSyncExitWith2, fnUntraced2, fn2, clockWith2, logWithLevel2, log, logFatal, logWarning, logError, logInfo, logDebug, logTrace, withLogger, annotateLogs, annotateLogsScoped2, withLogSpan, track, trackSuccesses, trackErrors, trackDefects, trackDuration, Transaction, tx, completedTransactions, stampTransaction, isTransactionConsistent, awaitPendingTransaction, txRetry, effectify, satisfiesSuccessType2, satisfiesErrorType2, satisfiesServicesType2, mapEager2, mapErrorEager2, mapBothEager2, flatMapEager2, catchEager2, fnUntracedEager2;
+var TypeId15, isEffect2, all4, partition4, reduce4, validate2, findFirst5, findFirstFilter2, forEach3, head3, whileLoop2, promise2, tryPromise2, succeed6, succeedNone2, succeedSome2, suspend3, sync3, void_4, undefined_2, callback2, never2, Do4, bindTo5, let_5, bind5, gen3, fail6, failSync2, failCause3, failCauseSync2, die3, try_3, yieldNow2, yieldNowWith2, withFiber2, withFiberSucceed2, fromResult2, fromOption5, transposeOption2, fromNullishOr4, flatMap6, flatten5, andThen3, tap5, result2, option2, exit2, map8, as3, asSome2, asVoid3, flip3, zip3, zipWith4, catch_3, catchTag3, catchTags2, catchReason2, catchReasons2, unwrapReason2, catchCause3, catchDefect2, catchIf2, catchFilter2, catchNoSuchElement2, catchCauseIf2, catchCauseFilter2, mapError3, mapBoth2, orDie3, tapError3, tapErrorTag2, tapCause3, tapCauseIf2, tapCauseFilter2, tapDefect2, eventually2, retry2, retryOrElse2, sandbox2, ignore2, ignoreCause2, withExecutionPlan2, withErrorReporting2, orElseSucceed2, firstSuccessOf2, timeout2, timeoutOption2, timeoutOrElse2, delay2, sleep2, timed2, raceAll2, raceAllFirst2, race2, raceFirst2, filter6, filterMap5, filterMapEffect2, filterOrElse2, filterMapOrElse2, filterOrFail2, filterMapOrFail2, when2, match6, matchEager2, matchCause2, matchCauseEager2, matchCauseEffectEager2, matchCauseEffect2, matchEffect3, isFailure5, isSuccess5, context2, contextWith2, provide4, provideContext2, setContext2, service2, serviceOption2, updateContext2, updateService3, updateServiceScoped2, provideService2, provideServiceEffect2, scope2, scoped2, scopedWith2, acquireRelease2, acquireDisposable2, acquireUseRelease2, addFinalizer3, ensuring2, onError2, onErrorIf2, onErrorFilter2, onExitPrimitive2, onExit2, onExitIf2, onExitFilter2, cached2, cachedWithTTL2, cachedInvalidateWithTTL2, interrupt3, interruptible2, onInterrupt2, uninterruptible2, uninterruptibleMask2, interruptibleMask2, abortSignal2, forever3, repeat2, repeatOrElse2, replicate3, replicateEffect2, schedule, scheduleFrom2, tracer2, withTracer2, withTracerEnabled2, withTracerTiming2, annotateSpans2, annotateCurrentSpan2, currentSpan2, currentParentSpan2, spanAnnotations2, spanLinks2, linkSpans2, makeSpan2, makeSpanScoped2, useSpan2, withSpan3, withSpanScoped2, withParentSpan3, request2, requestUnsafe2, forkChild2, forkIn2, forkScoped2, forkDetach2, awaitAllChildren2, fiber2, fiberId2, runFork2, runForkWith2, runCallbackWith2, runCallback2, runPromise2, runPromiseWith2, runPromiseExit2, runPromiseExitWith2, runSync2, runSyncWith2, runSyncExit2, runSyncExitWith2, fnUntraced2, fn2, clockWith3, logWithLevel2, log, logFatal, logWarning, logError, logInfo, logDebug, logTrace, withLogger, annotateLogs, annotateLogsScoped2, withLogSpan, track, trackSuccesses, trackErrors, trackDefects, trackDuration, Transaction, tx, completedTransactions, stampTransaction, isTransactionConsistent, awaitPendingTransaction, txRetry, effectify, satisfiesSuccessType2, satisfiesErrorType2, satisfiesServicesType2, mapEager2, mapErrorEager2, mapBothEager2, flatMapEager2, catchEager2, fnUntracedEager2;
 var init_Effect = __esm({
   "node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/Effect.js"() {
     init_Context();
@@ -11076,7 +11090,7 @@ var init_Effect = __esm({
     runSyncExitWith2 = runSyncExitWith;
     fnUntraced2 = fnUntraced;
     fn2 = fn;
-    clockWith2 = clockWith;
+    clockWith3 = clockWith;
     logWithLevel2 = logWithLevel;
     log = /* @__PURE__ */ logWithLevel();
     logFatal = /* @__PURE__ */ logWithLevel("Fatal");
@@ -11121,7 +11135,7 @@ var init_Effect = __esm({
       const input = f === void 0 ? defect : f(defect);
       return update(metric, input);
     }));
-    trackDuration = /* @__PURE__ */ dual((args2) => isEffect2(args2[0]), (self, metric, f) => clockWith2((clock) => {
+    trackDuration = /* @__PURE__ */ dual((args2) => isEffect2(args2[0]), (self, metric, f) => clockWith3((clock) => {
       const startTime = clock.monotonicTimeNanosUnsafe();
       return onExit2(self, () => {
         const endTime = clock.monotonicTimeNanosUnsafe();
@@ -32003,7 +32017,7 @@ var requestOrigin = (request3) => match(toUrl(request3), {
   onNone: () => request3.url,
   onSome: (url) => url.origin
 });
-var circuitBreakerClassifier = (exit3) => clockWith2((clock) => succeed6(classifyCircuitBreakerExit(exit3, clock.currentTimeMillisUnsafe())));
+var circuitBreakerClassifier = (exit3) => clockWith3((clock) => succeed6(classifyCircuitBreakerExit(exit3, clock.currentTimeMillisUnsafe())));
 var classifyCircuitBreakerExit = (exit3, nowMillis) => {
   if (isSuccess4(exit3)) {
     const outcome = circuitBreakerStatusOutcome(exit3.value.status);
@@ -34272,7 +34286,7 @@ var InfisicalSecrets = Schema_exports.Struct({ provider: ProviderName });
 var openBaoPathSegment = "[A-Za-z0-9_-][A-Za-z0-9_.-]*";
 var openBaoField = "[A-Za-z0-9_.-]+";
 var openBaoReference = `${openBaoPathSegment}(?:/${openBaoPathSegment})*:${openBaoField}`;
-var openBaoLiteral = String.raw`[^\x22\x27\x60$\\\p{Cc}]`;
+var openBaoLiteral = String.raw`[^\x00-\x1F\x7F-\x9F\x22\x27\x60$\\]`;
 var openBaoPart = String.raw`(?:${openBaoLiteral}|\$\{${openBaoReference}\})`;
 var OpenBaoValue = Schema_exports.String.check(
   Schema_exports.isPattern(
@@ -36082,7 +36096,7 @@ function findOpenBaoProvider({
     Effect_exports.map(({ vaultProviderId, config }) => ({
       vaultProviderId,
       name,
-      mount: config.mount ?? "secret",
+      mount: (config.mount ?? "secret").replaceAll(/^\/+|\/+$/gu, ""),
       namespace: Option_exports.filter(
         Option_exports.fromNullishOr(config.namespace),
         (namespace) => namespace !== ""
@@ -36647,11 +36661,12 @@ var OpenBaoRequestError = class _OpenBaoRequestError extends Schema_exports.Tagg
 function encodePath(path) {
   return path.split("/").map(encodeURIComponent).join("/");
 }
-function stateOf({ data }) {
+function stateOf({ data }, now2) {
   const current = data.versions[String(data.current_version)];
   if (current === void 0) return "missing";
   if (current.destroyed) return "destroyed";
-  return current.deletion_time === "" ? "live" : "deleted";
+  const deletedAt = Date.parse(current.deletion_time);
+  return current.deletion_time === "" || !(deletedAt <= now2) ? "live" : "deleted";
 }
 var HttpOpenBaoMetadata = class _HttpOpenBaoMetadata {
   enabled = true;
@@ -36717,7 +36732,7 @@ var HttpOpenBaoMetadata = class _HttpOpenBaoMetadata {
         Effect_exports.flatMap(
           (body) => Schema_exports.decodeUnknownEffect(SecretMetadata)(body)
         ),
-        Effect_exports.map(stateOf),
+        Effect_exports.zipWith(Clock_exports.currentTimeMillis, stateOf),
         Effect_exports.mapError(
           (cause) => OpenBaoRequestError.because({
             secret: location2,
@@ -38193,12 +38208,16 @@ function secretsNote({ secrets }) {
   const checked = secrets.metadataChecked ? "every path was also checked live in OpenBao metadata" : "no `openbao-token`, so OpenBao metadata was not checked";
   return ["", `Secrets: OpenBao references through ${providers}; ${checked}.`];
 }
-function unverifiedReferencesSection({ unverifiedReferences }) {
+function unverifiedReferencesSection({
+  unverifiedReferences,
+  secrets
+}) {
   if (unverifiedReferences.length === 0) return [];
+  const advice = secrets.kind === "openbao" && secrets.metadataChecked ? "Their paths are live in OpenBao metadata, but their fields are unchecked: a missing field fails the deploy." : "A missing one fails the deploy: check them, or pass an `openbao-token` to check their paths in OpenBao.";
   return [
     "",
     `> [!WARNING]`,
-    `> Dokploy's listing of the provider stops at 200 entries, so these references could not be checked: ${Array_exports.map(unverifiedReferences, cell).join(", ")}. A missing one fails the deploy: check them, or pass an \`openbao-token\` to check their paths in OpenBao.`
+    `> Dokploy's listing of the provider stops at 200 entries, so these references could not be checked: ${Array_exports.map(unverifiedReferences, cell).join(", ")}. ${advice}`
   ];
 }
 function strayRouterHostsSection({ strayRouterHosts: strayRouterHosts2 }) {
@@ -38763,6 +38782,7 @@ var ManifestDeployAction = class _ManifestDeployAction {
           "DeployAction could not verify OpenBao references: the provider listing is truncated",
           {
             environment: plan.environment,
+            pathsCheckedInOpenBao: plan.secrets.kind === "openbao" && plan.secrets.metadataChecked,
             references: plan.unverifiedReferences
           }
         )

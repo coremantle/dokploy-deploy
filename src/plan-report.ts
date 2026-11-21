@@ -119,12 +119,19 @@ function secretsNote({ secrets }: DeploymentPlan) {
   return ['', `Secrets: OpenBao references through ${providers}; ${checked}.`]
 }
 
-function unverifiedReferencesSection({ unverifiedReferences }: DeploymentPlan) {
+function unverifiedReferencesSection({
+  unverifiedReferences,
+  secrets,
+}: DeploymentPlan) {
   if (unverifiedReferences.length === 0) return []
+  const advice =
+    secrets.kind === 'openbao' && secrets.metadataChecked
+      ? 'Their paths are live in OpenBao metadata, but their fields are unchecked: a missing field fails the deploy.'
+      : 'A missing one fails the deploy: check them, or pass an `openbao-token` to check their paths in OpenBao.'
   return [
     '',
     `> [!WARNING]`,
-    `> Dokploy's listing of the provider stops at 200 entries, so these references could not be checked: ${Array.map(unverifiedReferences, cell).join(', ')}. A missing one fails the deploy: check them, or pass an \`openbao-token\` to check their paths in OpenBao.`,
+    `> Dokploy's listing of the provider stops at 200 entries, so these references could not be checked: ${Array.map(unverifiedReferences, cell).join(', ')}. ${advice}`,
   ]
 }
 

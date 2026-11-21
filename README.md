@@ -235,7 +235,11 @@ environments:
 - **Mount guard** (accident protection, like the folder guard): a provider's
   mount must be the slug of the Dokploy project name (`My App` → `my-app`) or
   `shared`; another application's mount is refused before any secret is
-  listed.
+  listed. The guard does not look at the provider's OpenBao namespace:
+  keep each environment on providers of the right namespace.
+- **Editor schema**: the published JSON Schema cannot express that an
+  environment without `secrets.openbao` needs the top-level
+  `secrets.folder`; the action checks it when it decodes the manifest.
 
 `plan` checks each reference **through Dokploy**, without any OpenBao
 credential: `vaultProvider.listSecretNames` returns the `<path>:<field>`
@@ -269,7 +273,11 @@ redirect fails like any other non-2xx answer.
     openbao-token: ${{ steps.openbao-login.outputs.token }} # e.g. a short-lived token from a CI login
 ```
 
-Without a token, nothing is sent to OpenBao and the plan comment says so.
+Without a token, nothing is sent to OpenBao and the plan comment says so —
+also when `openbao-url` is set but the token expression is empty (a login
+step that produced nothing): check the comment's line. A current version
+whose deletion is only scheduled (`delete_version_after`, a future
+`deletion_time`) counts as live.
 
 ### What `plan` checks and renders
 

@@ -223,7 +223,7 @@ export function findOpenBaoProvider({
     Effect.map(({ vaultProviderId, config }): OpenBaoProvider => ({
       vaultProviderId,
       name,
-      mount: config.mount ?? 'secret',
+      mount: (config.mount ?? 'secret').replaceAll(/^\/+|\/+$/gu, ''),
       namespace: Option.filter(
         Option.fromNullishOr(config.namespace),
         (namespace) => namespace !== '',

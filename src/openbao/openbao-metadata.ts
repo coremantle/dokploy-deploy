@@ -1,4 +1,13 @@
-import { Context, Effect, Layer, Option, Redacted, Schema, pipe } from 'effect'
+import {
+  Clock,
+  Context,
+  Effect,
+  Layer,
+  Option,
+  Redacted,
+  Schema,
+  pipe,
+} from 'effect'
 import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http'
 import type { HttpClientResponse } from 'effect/http'
 
@@ -91,11 +100,15 @@ function encodePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
 }
 
-function stateOf({ data }: SecretMetadata): SecretState {
+function stateOf({ data }: SecretMetadata, now: number): SecretState {
   const current = data.versions[String(data.current_version)]
   if (current === undefined) return 'missing'
   if (current.destroyed) return 'destroyed'
-  return current.deletion_time === '' ? 'live' : 'deleted'
+  // Why: a mount or secret with delete_version_after stamps every new version with a FUTURE deletion_time; only a past one is deleted.
+  const deletedAt = Date.parse(current.deletion_time)
+  return current.deletion_time === '' || !(deletedAt <= now)
+    ? 'live'
+    : 'deleted'
 }
 
 class HttpOpenBaoMetadata implements OpenBaoMetadataShape {
@@ -174,7 +187,7 @@ class HttpOpenBaoMetadata implements OpenBaoMetadataShape {
             Effect.flatMap((body) =>
               Schema.decodeUnknownEffect(SecretMetadata)(body),
             ),
-            Effect.map(stateOf),
+            Effect.zipWith(Clock.currentTimeMillis, stateOf),
             Effect.mapError((cause) =>
               OpenBaoRequestError.because({
                 secret: location,

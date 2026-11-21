@@ -1,6 +1,7 @@
 import { describe, effect, expect } from '@effect/vitest'
 import { Effect, Layer, Option, Redacted } from 'effect'
 import { HttpClient, HttpClientResponse } from 'effect/http'
+import { TestClock } from 'effect/testing'
 
 import { ActionInputs } from '#action-inputs.config.ts'
 import {
@@ -155,7 +156,8 @@ describe('OpenBaoMetadata', () => {
 
   effect('should report a deleted current version', () =>
     Effect.gen(function* () {
-      // Given: a current version soft-deleted
+      // Given: a current version soft-deleted an hour ago
+      yield* TestClock.setTime(Date.parse('2026-11-21T12:00:00Z'))
       const { layer } = fakeOpenBao({
         status: 200,
         body: metadata({ current: 2, deletionTime: '2026-11-21T11:00:00Z' }),
@@ -166,6 +168,22 @@ describe('OpenBaoMetadata', () => {
 
       // Then: it is deleted
       expect(state).toBe('deleted')
+    }),
+  )
+
+  effect('should keep a version whose deletion is only scheduled live', () =>
+    Effect.gen(function* () {
+      // Given: delete_version_after stamping the current version with a future deletion_time
+      const { layer } = fakeOpenBao({
+        status: 200,
+        body: metadata({ current: 2, deletionTime: '2999-01-01T00:00:00Z' }),
+      })
+
+      // When: asking for the state of the secret
+      const state = yield* stateOf({ layer })
+
+      // Then: it is still live
+      expect(state).toBe('live')
     }),
   )
 

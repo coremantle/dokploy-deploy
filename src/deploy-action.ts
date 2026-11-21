@@ -175,6 +175,9 @@ class ManifestDeployAction implements DeployActionShape {
               'DeployAction could not verify OpenBao references: the provider listing is truncated',
               {
                 environment: plan.environment,
+                pathsCheckedInOpenBao:
+                  plan.secrets.kind === 'openbao' &&
+                  plan.secrets.metadataChecked,
                 references: plan.unverifiedReferences,
               },
             ),

@@ -87,7 +87,7 @@
                           "patternProperties": {
                             "^[A-Za-z_][A-Za-z0-9_.-]*$": {
                               "type": "string",
-                              "pattern": "^(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+|(?:[^\\x22\\x27\\x60$\\\\\\p{Cc}]|\\$\\{[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+\\})*\\$\\{[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+\\}(?:[^\\x22\\x27\\x60$\\\\\\p{Cc}]|\\$\\{[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+\\})*)$",
+                              "pattern": "^(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+|(?:[^\\x00-\\x1F\\x7F-\\x9F\\x22\\x27\\x60$\\\\]|\\$\\{[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+\\})*\\$\\{[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+\\}(?:[^\\x00-\\x1F\\x7F-\\x9F\\x22\\x27\\x60$\\\\]|\\$\\{[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:\\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*:[A-Za-z0-9_.-]+\\})*)$",
                               "description": "A reference `<path>:<field>`, the path relative to the provider's mount (e.g. `prod/postgres:password`), or a composed value holding `${<path>:<field>}` references (e.g. `postgres://app:${prod/postgres:password}@db:5432/app`)."
                             }
                           },

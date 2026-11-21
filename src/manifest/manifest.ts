@@ -33,7 +33,7 @@ export const openBaoField = '[A-Za-z0-9_.-]+'
 
 export const openBaoReference = `${openBaoPathSegment}(?:/${openBaoPathSegment})*:${openBaoField}`
 
-const openBaoLiteral = String.raw`[^\x22\x27\x60$\\\p{Cc}]`
+const openBaoLiteral = String.raw`[^\x00-\x1F\x7F-\x9F\x22\x27\x60$\\]`
 
 const openBaoPart = String.raw`(?:${openBaoLiteral}|\$\{${openBaoReference}\})`
 
