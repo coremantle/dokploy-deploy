@@ -179,3 +179,24 @@ jobs:
 
       - name: The second apply with version-env wrote nothing
         run: test "$(grep -c '^POST /api/compose.saveEnvironment' "$RUNNER_TEMP/fake-dokploy.log")" = 2
+
+      # Why: the OpenBao form of `secrets:` renders the manifest's explicit mapping, a composed value included, after listing the provider's path:field names through Dokploy.
+      - name: Apply the OpenBao form
+        uses: ./
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/fake-dokploy.crt
+        with:
+          api-url: https://localhost:8443/api
+          api-key: smoke-test-key-not-a-secret
+          manifest: .github/smoke/dokploy-openbao.yml
+          mode: apply
+          deploy: 'false'
+
+      - name: The apply wrote the OpenBao references
+        # Why: `$` and `{{` are split so the workflow never holds the expression opener the runner would evaluate.
+        run: |
+          cat "$RUNNER_TEMP/fake-dokploy.log"
+          d='$'
+          grep -qx 'listSecretNames| provider-smoke-prod' "$RUNNER_TEMP/fake-dokploy.log"
+          grep -qxF "env| GREETING='${d}{{vault.smoke-prod.prod/hello:greeting}}'" "$RUNNER_TEMP/fake-dokploy.log"
+          grep -qxF "env| MESSAGE='from ${d}{{vault.smoke-prod.prod/hello:host}}: ${d}{{vault.smoke-prod.prod/hello:message}}'" "$RUNNER_TEMP/fake-dokploy.log"

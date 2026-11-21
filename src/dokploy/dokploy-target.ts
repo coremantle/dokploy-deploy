@@ -1,4 +1,4 @@
-import { Array, Effect, Schema, pipe } from 'effect'
+import { Array, Effect, Option, Schema, pipe } from 'effect'
 
 import type { DokployProject, VaultProvider } from '#dokploy/dokploy-client.ts'
 
@@ -184,6 +184,52 @@ export function findVaultProvider({
         }),
     ),
     Effect.withSpan('DokployTarget.findVaultProvider', {
+      attributes: { provider: name },
+    }),
+  )
+}
+
+export interface OpenBaoProvider {
+  readonly vaultProviderId: string
+  readonly name: string
+  readonly mount: string
+  readonly namespace: Option.Option<string>
+}
+
+export function findOpenBaoProvider({
+  providers,
+  name,
+}: {
+  readonly providers: ReadonlyArray<VaultProvider>
+  readonly name: string
+}) {
+  return pipe(
+    Array.findFirst(providers, (provider) => provider.name === name),
+    Effect.fromOption(() =>
+      VaultProviderError.because({
+        provider: name,
+        reason:
+          'is not visible to the API key: check its name and its assignment to the project',
+      }),
+    ),
+    Effect.filterOrFail(
+      ({ providerType }) => providerType === 'hashicorp',
+      ({ providerType }) =>
+        VaultProviderError.because({
+          provider: name,
+          reason: `is a ${providerType} provider; \`secrets.openbao\` needs a HashiCorp Vault / OpenBao provider`,
+        }),
+    ),
+    Effect.map(({ vaultProviderId, config }): OpenBaoProvider => ({
+      vaultProviderId,
+      name,
+      mount: config.mount ?? 'secret',
+      namespace: Option.filter(
+        Option.fromNullishOr(config.namespace),
+        (namespace) => namespace !== '',
+      ),
+    })),
+    Effect.withSpan('DokployTarget.findOpenBaoProvider', {
       attributes: { provider: name },
     }),
   )

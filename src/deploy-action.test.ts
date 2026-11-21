@@ -170,6 +170,30 @@ describe('DeployAction', () => {
     }),
   )
 
+  effect('should mask the openbao-token before planning', () =>
+    Effect.gen(function* () {
+      // Given: a run checking OpenBao metadata
+      const { layer, steps } = recordingAction({
+        inputs: {
+          openbao: Option.some({
+            url: new URL('https://bao.example.com'),
+            token: Redacted.make('test-openbao-token'),
+          }),
+        },
+      })
+
+      // When: running the action
+      yield* runAction(layer)
+
+      // Then: the token is masked before planning
+      expect(steps.slice(0, 3)).toEqual([
+        { kind: 'mask', detail: 'test-dokploy-api-key' },
+        { kind: 'mask', detail: 'test-openbao-token' },
+        { kind: 'plan', detail: 'planned' },
+      ])
+    }),
+  )
+
   effect('should log the block, the domains and the changes in plan mode', () =>
     Effect.gen(function* () {
       // Given: plan mode outside a pull request

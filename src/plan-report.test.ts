@@ -196,4 +196,45 @@ describe('renderPlanReport', () => {
     // Then: no version line is announced
     expect(report).not.toContain('short sha')
   })
+
+  it('should name the OpenBao providers and whether metadata was checked', () => {
+    // Given: a plan on OpenBao references, without an openbao-token
+    const plan: DeploymentPlan = {
+      ...basePlan,
+      secrets: {
+        kind: 'openbao',
+        metadataChecked: false,
+        providers: [
+          {
+            name: 'demo-prod',
+            mount: 'demo',
+            references: ['prod/hello:MESSAGE'],
+          },
+        ],
+      },
+    }
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: the provider, its mount and the missing metadata check are stated
+    expect(report).toContain(
+      'Secrets: OpenBao references through `demo-prod` (mount `demo`); no `openbao-token`, so OpenBao metadata was not checked.',
+    )
+  })
+
+  it('should warn about references the provider listing could not show', () => {
+    // Given: references left unverified by a truncated listing
+    const plan: DeploymentPlan = {
+      ...basePlan,
+      unverifiedReferences: ['demo-prod:prod/hello:MESSAGE'],
+    }
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: a warning names them
+    expect(report).toContain('> [!WARNING]')
+    expect(report).toContain('`demo-prod:prod/hello:MESSAGE`')
+  })
 })

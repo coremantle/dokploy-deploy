@@ -1,0 +1,21 @@
+# OpenBao form of the smoke manifest: the same compose, its env mapped explicitly to OpenBao references.
+version: 1
+composeFile: .github/smoke/docker-compose.dokploy.yml
+
+environments:
+  production:
+    dokploy:
+      project: Smoke
+      environment: production
+      compose: hello
+    secrets:
+      openbao:
+        smoke-prod:
+          GREETING: prod/hello:greeting
+          MESSAGE: 'from ${prod/hello:host}: ${prod/hello:message}'
+    domain: smoke.example.com
+
+domains:
+  - service: hello
+    subdomain: hello
+    port: 8080

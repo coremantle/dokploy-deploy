@@ -274,6 +274,6 @@ export function resolveVersion({
   )
 }
 
-function versionLine({ key, value }: AppVersion): string {
+export function versionLine({ key, value }: AppVersion): string {
   return `${key}=${value}\n`
 }

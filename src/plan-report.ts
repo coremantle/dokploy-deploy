@@ -107,6 +107,27 @@ function unsupportedSection({ unsupported }: DeploymentPlan) {
   ]
 }
 
+function secretsNote({ secrets }: DeploymentPlan) {
+  if (secrets.kind === 'infisical') return []
+  const providers = Array.map(
+    secrets.providers,
+    ({ name, mount }) => `${cell(name)} (mount ${cell(mount)})`,
+  ).join(', ')
+  const checked = secrets.metadataChecked
+    ? 'every path was also checked live in OpenBao metadata'
+    : 'no `openbao-token`, so OpenBao metadata was not checked'
+  return ['', `Secrets: OpenBao references through ${providers}; ${checked}.`]
+}
+
+function unverifiedReferencesSection({ unverifiedReferences }: DeploymentPlan) {
+  if (unverifiedReferences.length === 0) return []
+  return [
+    '',
+    `> [!WARNING]`,
+    `> Dokploy's listing of the provider stops at 200 entries, so these references could not be checked: ${Array.map(unverifiedReferences, cell).join(', ')}. A missing one fails the deploy: check them, or pass an \`openbao-token\` to check their paths in OpenBao.`,
+  ]
+}
+
 function strayRouterHostsSection({ strayRouterHosts }: DeploymentPlan) {
   if (strayRouterHosts.length === 0) return []
   return [
@@ -131,9 +152,11 @@ export function renderPlanReport(plan: DeploymentPlan): string {
     `Compose ${cell(dokploy.compose)} of project ${cell(dokploy.project)}, environment ${cell(dokploy.environment)}. ${headline(plan)}`,
     '',
     ...envSection(plan),
+    ...secretsNote(plan),
     '',
     ...domainsSection(plan),
     ...unsupportedSection(plan),
+    ...unverifiedReferencesSection(plan),
     ...strayRouterHostsSection(plan),
     '',
   ].join('\n')

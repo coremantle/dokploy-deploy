@@ -5,6 +5,7 @@ import { ActionInputs, testCommit } from '#action-inputs.config.ts'
 import type { ComposeFile } from '#compose/compose-file.ts'
 import {
   DeploymentPlanner,
+  OpenBaoSecretStateError,
   UnknownEnvironmentError,
 } from '#deployment-planner.ts'
 import type {
@@ -14,6 +15,7 @@ import type {
   VaultProvider,
 } from '#dokploy/dokploy-client.ts'
 import { DokployClient } from '#dokploy/dokploy-client.ts'
+import { VaultProviderError } from '#dokploy/dokploy-target.ts'
 import {
   MissingComposeVariablesError,
   NoSecretKeysError,
@@ -21,7 +23,14 @@ import {
   VersionKeyCollisionError,
   VersionWithoutCommitError,
 } from '#env/env-references.ts'
-import type { Manifest } from '#manifest/manifest.ts'
+import {
+  MissingSecretReferencesError,
+  MountGuardError,
+  VersionKeyMappedError,
+} from '#env/openbao-references.ts'
+import type { Manifest, ManifestEnvironment } from '#manifest/manifest.ts'
+import type { SecretState } from '#openbao/openbao-metadata.ts'
+import { OpenBaoMetadata } from '#openbao/openbao-metadata.ts'
 import { WorkspaceFiles } from '#workspace-files.ts'
 
 const demoManifest: Manifest = {
@@ -100,6 +109,7 @@ function plannerIn({
     Layer.provide(
       Layer.mergeAll(
         ActionInputs.buildTestLayer({ environment, versionEnv, commit }),
+        OpenBaoMetadata.testLayer,
         WorkspaceFiles.buildTestLayer({
           readManifest: () => Effect.succeed(manifest),
           readCompose: () => Effect.succeed(compose),
@@ -154,7 +164,11 @@ describe('DeploymentPlanner', () => {
       const plan = yield* planWith(layer)
 
       // Then: the block references every key through babel's default provider
-      expect(plan.provider).toBe('infisical-demo')
+      expect(plan.secrets).toEqual({
+        kind: 'infisical',
+        provider: 'infisical-demo',
+        folder: '/demo/hello',
+      })
       expect(plan.env).toBe(
         [
           "DEMO_IMPORTED='${{vault.infisical-demo./demo/hello:DEMO_IMPORTED}}'",
@@ -371,7 +385,11 @@ describe('DeploymentPlanner', () => {
       const plan = yield* planWith(layer)
 
       // Then: that provider is used
-      expect(plan.provider).toBe('infisical-demo')
+      expect(plan.secrets).toEqual({
+        kind: 'infisical',
+        provider: 'infisical-demo',
+        folder: '/demo/hello',
+      })
     }),
   )
 
@@ -604,5 +622,323 @@ describe('DeploymentPlanner', () => {
         expect(error).toEqual(VersionWithoutCommitError.forKey('APP_VERSION'))
         expect(dokployCalls).toEqual([])
       }),
+  )
+})
+
+const openBaoEnvironment: ManifestEnvironment = {
+  dokploy: { project: 'Demo', environment: 'production', compose: 'hello' },
+  secrets: {
+    openbao: {
+      'demo-prod': {
+        MESSAGE: 'prod/hello:MESSAGE',
+        HELLO_URL: 'https://${prod/hello:HELLO_HOST}/',
+      },
+      'shared-prod': { NPM_TOKEN: 'prod/npm-registry:token' },
+    },
+  },
+  domain: 'demo.example.com',
+}
+
+const openBaoManifest: Manifest = {
+  version: 1,
+  composeFile: 'docker-compose.dokploy.yml',
+  environments: { production: openBaoEnvironment },
+  domains: demoManifest.domains,
+}
+
+const openBaoProviders: ReadonlyArray<VaultProvider> = [
+  {
+    vaultProviderId: 'provider-demo-prod',
+    name: 'demo-prod',
+    providerType: 'hashicorp',
+    config: { mount: 'demo' },
+  },
+  {
+    vaultProviderId: 'provider-shared-prod',
+    name: 'shared-prod',
+    providerType: 'hashicorp',
+    config: { mount: 'shared', namespace: '' },
+  },
+  demoProvider,
+]
+
+const openBaoListings: Readonly<Record<string, ReadonlyArray<string>>> = {
+  'provider-demo-prod': ['prod/hello:HELLO_HOST', 'prod/hello:MESSAGE'],
+  'provider-shared-prod': ['prod/npm-registry:token'],
+}
+
+interface OpenBaoWorld {
+  readonly manifest?: Manifest
+  readonly providers?: ReadonlyArray<VaultProvider>
+  readonly listings?: Readonly<Record<string, ReadonlyArray<string>>>
+  readonly states?: Readonly<Record<string, SecretState>>
+  readonly metadata?: boolean
+  readonly versionEnv?: Option.Option<string>
+}
+
+function openBaoPlannerIn({
+  manifest = openBaoManifest,
+  providers = openBaoProviders,
+  listings = openBaoListings,
+  states = {},
+  metadata = false,
+  versionEnv = Option.none(),
+}: OpenBaoWorld) {
+  const queries: Array<SecretNamesQuery> = []
+  const metadataReads: Array<string> = []
+  const layer = DeploymentPlanner.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ActionInputs.buildTestLayer({ versionEnv }),
+        OpenBaoMetadata.buildTestLayer({
+          enabled: metadata,
+          secretState: ({ mount, path, namespace }) =>
+            Effect.sync(() => {
+              metadataReads.push(
+                `${Option.getOrElse(namespace, () => '')}|${mount}/${path}`,
+              )
+              return states[`${mount}/${path}`] ?? 'live'
+            }),
+        }),
+        WorkspaceFiles.buildTestLayer({
+          readManifest: () => Effect.succeed(manifest),
+          readCompose: () =>
+            Effect.succeed({
+              ...demoCompose,
+              requiredVariables: ['MESSAGE', 'NPM_TOKEN'],
+            }),
+        }),
+        DokployClient.buildTestLayer({
+          projects: Effect.succeed(demoProjects),
+          vaultProviders: Effect.succeed(providers),
+          listSecretNames: (query) =>
+            Effect.sync(() => {
+              queries.push(query)
+              return listings[query.vaultProviderId] ?? []
+            }),
+        }),
+      ),
+    ),
+  )
+  return { layer, queries, metadataReads }
+}
+
+describe('DeploymentPlanner with OpenBao secrets', () => {
+  effect('should render the explicit mapping as OpenBao references', () =>
+    Effect.gen(function* () {
+      // Given: Demo mapping keys to its own provider and to shared-prod
+      const { layer, queries } = openBaoPlannerIn({})
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: each key references its provider, path and field; composed values keep their text
+      expect(plan.env).toBe(
+        [
+          "HELLO_URL='https://${{vault.demo-prod.prod/hello:HELLO_HOST}}/'",
+          "MESSAGE='${{vault.demo-prod.prod/hello:MESSAGE}}'",
+          "NPM_TOKEN='${{vault.shared-prod.prod/npm-registry:token}}'",
+          '',
+        ].join('\n'),
+      )
+      expect(plan.keys).toEqual(['HELLO_URL', 'MESSAGE', 'NPM_TOKEN'])
+      expect(plan.secrets).toEqual({
+        kind: 'openbao',
+        metadataChecked: false,
+        providers: [
+          {
+            name: 'demo-prod',
+            mount: 'demo',
+            references: ['prod/hello:HELLO_HOST', 'prod/hello:MESSAGE'],
+          },
+          {
+            name: 'shared-prod',
+            mount: 'shared',
+            references: ['prod/npm-registry:token'],
+          },
+        ],
+      })
+      expect(plan.unverifiedReferences).toEqual([])
+      expect(queries.map(({ vaultProviderId }) => vaultProviderId)).toEqual([
+        'provider-demo-prod',
+        'provider-shared-prod',
+      ])
+      expect(queries[0]?.environmentId).toBe('environment-production')
+    }),
+  )
+
+  effect('should refuse an Infisical provider in the OpenBao form', () =>
+    Effect.gen(function* () {
+      // Given: the mapping naming the Infisical provider
+      const manifest: Manifest = {
+        ...openBaoManifest,
+        environments: {
+          production: {
+            ...openBaoEnvironment,
+            secrets: { openbao: { 'infisical-demo': { MESSAGE: 'p/x:y' } } },
+          },
+        },
+      }
+      const { layer } = openBaoPlannerIn({ manifest })
+
+      // When: planning
+      const error = yield* Effect.flip(planWith(layer))
+
+      // Then: the provider type is refused
+      expect(error).toBeInstanceOf(VaultProviderError)
+      expect(error.message).toContain('HashiCorp Vault / OpenBao')
+    }),
+  )
+
+  effect('should refuse a provider reading another application mount', () =>
+    Effect.gen(function* () {
+      // Given: demo-prod pointed at Octant's mount
+      const providers = openBaoProviders.map((provider) =>
+        provider.name === 'demo-prod'
+          ? { ...provider, config: { mount: 'octant' } }
+          : provider,
+      )
+      const { layer, queries } = openBaoPlannerIn({ providers })
+
+      // When: planning
+      const error = yield* Effect.flip(planWith(layer))
+
+      // Then: the guard stops it before listing any secret
+      expect(error).toEqual(
+        MountGuardError.outside({
+          provider: 'demo-prod',
+          mount: 'octant',
+          project: 'Demo',
+        }),
+      )
+      expect(queries).toEqual([])
+    }),
+  )
+
+  effect('should fail on a reference the provider does not list', () =>
+    Effect.gen(function* () {
+      // Given: the shared provider missing the npm token
+      const { layer } = openBaoPlannerIn({
+        listings: { ...openBaoListings, 'provider-shared-prod': ['x:y'] },
+      })
+
+      // When: planning
+      const error = yield* Effect.flip(planWith(layer))
+
+      // Then: the missing reference is named, by path and field only
+      expect(error).toEqual(
+        MissingSecretReferencesError.forReferences({
+          provider: 'shared-prod',
+          references: ['prod/npm-registry:token'],
+          listed: 1,
+        }),
+      )
+    }),
+  )
+
+  effect('should fail when the compose needs a key the mapping lacks', () =>
+    Effect.gen(function* () {
+      // Given: a mapping without NPM_TOKEN, which the compose requires
+      const manifest: Manifest = {
+        ...openBaoManifest,
+        environments: {
+          production: {
+            ...openBaoEnvironment,
+            secrets: {
+              openbao: { 'demo-prod': { MESSAGE: 'prod/hello:MESSAGE' } },
+            },
+          },
+        },
+      }
+      const { layer } = openBaoPlannerIn({ manifest })
+
+      // When: planning
+      const error = yield* Effect.flip(planWith(layer))
+
+      // Then: the compose check names it
+      expect(error).toEqual(
+        MissingComposeVariablesError.forVariables({
+          compose: 'docker-compose.dokploy.yml',
+          variables: ['NPM_TOKEN'],
+        }),
+      )
+    }),
+  )
+
+  effect('should check each path in OpenBao metadata with a token', () =>
+    Effect.gen(function* () {
+      // Given: an openbao-token
+      const { layer, metadataReads } = openBaoPlannerIn({ metadata: true })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: each distinct path was read once, in its provider's mount
+      expect([...metadataReads].sort()).toEqual([
+        '|demo/prod/hello',
+        '|shared/prod/npm-registry',
+      ])
+      expect(
+        plan.secrets.kind === 'openbao' && plan.secrets.metadataChecked,
+      ).toBe(true)
+    }),
+  )
+
+  effect('should fail on a path without a live version in OpenBao', () =>
+    Effect.gen(function* () {
+      // Given: the npm token's current version deleted
+      const { layer } = openBaoPlannerIn({
+        metadata: true,
+        states: { 'shared/prod/npm-registry': 'deleted' },
+      })
+
+      // When: planning
+      const error = yield* Effect.flip(planWith(layer))
+
+      // Then: the path and its state are named
+      expect(error).toEqual(
+        OpenBaoSecretStateError.forSecrets([
+          { location: 'shared/prod/npm-registry', state: 'deleted' },
+        ]),
+      )
+    }),
+  )
+
+  effect('should only warn when the provider listing is truncated', () =>
+    Effect.gen(function* () {
+      // Given: Dokploy listing 200 other entries for demo-prod
+      const listings = {
+        ...openBaoListings,
+        'provider-demo-prod': Array.from(
+          { length: 200 },
+          (_, index) => `prod/other-${index}:value`,
+        ),
+      }
+      const { layer } = openBaoPlannerIn({ listings })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: the references it could not see are reported, the plan goes on
+      expect(plan.unverifiedReferences).toEqual([
+        'demo-prod:prod/hello:HELLO_HOST',
+        'demo-prod:prod/hello:MESSAGE',
+      ])
+    }),
+  )
+
+  effect('should refuse a version-env the mapping holds', () =>
+    Effect.gen(function* () {
+      // Given: version-env named like a mapped key
+      const { layer } = openBaoPlannerIn({
+        versionEnv: Option.some('MESSAGE'),
+      })
+
+      // When: planning
+      const error = yield* Effect.flip(planWith(layer))
+
+      // Then: the collision is reported
+      expect(error).toEqual(VersionKeyMappedError.forKey('MESSAGE'))
+    }),
   )
 })

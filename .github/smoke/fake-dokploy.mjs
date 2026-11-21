@@ -75,8 +75,25 @@ const reads = {
       providerType: 'infisical',
       config: { providerType: 'infisical', secretPath: '/smoke/hello' },
     },
+    {
+      vaultProviderId: 'provider-smoke-prod',
+      name: 'smoke-prod',
+      providerType: 'hashicorp',
+      config: {
+        providerType: 'hashicorp',
+        url: 'http://openbao:8200',
+        token: '••••••••',
+        mount: 'smoke',
+      },
+    },
   ],
-  '/api/vaultProvider.listSecretNames': () => ['MESSAGE', 'GREETING'],
+  // Why: like Dokploy, an OpenBao provider lists `<path>:<field>` names, an Infisical one key names.
+  '/api/vaultProvider.listSecretNames': ({ vaultProviderId }) => {
+    console.log(`listSecretNames| ${vaultProviderId}`)
+    return vaultProviderId === 'provider-smoke-prod'
+      ? ['prod/hello:greeting', 'prod/hello:message', 'prod/hello:host']
+      : ['MESSAGE', 'GREETING']
+  },
   '/api/compose.one': () => ({
     composeId: 'compose-hello',
     name: 'hello',
@@ -120,7 +137,10 @@ function reply({ response, status, body }) {
 }
 
 function answer({ request, response, rawBody }) {
-  const { pathname } = new URL(request.url ?? '/', 'https://localhost')
+  const { pathname, searchParams } = new URL(
+    request.url ?? '/',
+    'https://localhost',
+  )
   const handlers = request.method === 'POST' ? writes : reads
   const handler = handlers[pathname]
   if (request.headers['x-api-key'] !== expectedKey) {
@@ -131,7 +151,11 @@ function answer({ request, response, rawBody }) {
     reply({
       response,
       status: 200,
-      body: handler(rawBody === '' ? {} : JSON.parse(rawBody)),
+      body: handler(
+        request.method === 'POST'
+          ? JSON.parse(rawBody === '' ? '{}' : rawBody)
+          : Object.fromEntries(searchParams),
+      ),
     })
   }
   console.log(`${request.method} ${pathname} -> ${response.statusCode}`)

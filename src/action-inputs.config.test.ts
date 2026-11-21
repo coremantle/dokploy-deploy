@@ -516,4 +516,73 @@ describe('ActionInputs of the deploy', () => {
       expect(Exit.isFailure(outcome)).toBe(true)
     }),
   )
+
+  effect('should decode the OpenBao url and token, the token redacted', () =>
+    Effect.gen(function* () {
+      // Given: an openbao-token and its url
+      const environment = {
+        ...validInputs,
+        [inputVariables.openbaoUrl]: 'https://bao.example.com',
+        [inputVariables.openbaoToken]: ' test-openbao-token\n',
+      }
+
+      // When: reading the inputs
+      const inputs = yield* ActionInputs.pipe(
+        Effect.provide(layerWithEnvironment(environment)),
+      )
+
+      // Then: both are decoded, the token trimmed and redacted
+      expect(
+        Option.map(inputs.openbao, ({ url, token }) => [
+          url.host,
+          Redacted.value(token),
+        ]),
+      ).toEqual(Option.some(['bao.example.com', 'test-openbao-token']))
+      expect(String(inputs.openbao)).not.toContain('test-openbao-token')
+    }),
+  )
+
+  effect('should read a blank openbao-token as no OpenBao check', () =>
+    Effect.gen(function* () {
+      // Given: the composite step passing empty OpenBao inputs
+      const environment = {
+        ...validInputs,
+        [inputVariables.openbaoUrl]: '',
+        [inputVariables.openbaoToken]: '',
+      }
+
+      // When: reading the inputs
+      const inputs = yield* ActionInputs.pipe(
+        Effect.provide(layerWithEnvironment(environment)),
+      )
+
+      // Then: the check is off, the url not even read
+      expect(inputs.openbao).toEqual(Option.none())
+    }),
+  )
+
+  for (const url of ['', 'http://bao.example.com', 'not a url']) {
+    effect(
+      `should refuse an openbao-token with the url ${JSON.stringify(url)}`,
+      () =>
+        Effect.gen(function* () {
+          // Given: a token without an https url to send it to
+          const environment = {
+            ...validInputs,
+            [inputVariables.openbaoUrl]: url,
+            [inputVariables.openbaoToken]: 'test-openbao-token',
+          }
+
+          // When: reading the inputs
+          const outcome = yield* Effect.exit(
+            ActionInputs.pipe(
+              Effect.provide(layerWithEnvironment(environment)),
+            ),
+          )
+
+          // Then: the action fails before sending the token anywhere
+          expect(Exit.isFailure(outcome)).toBe(true)
+        }),
+    )
+  }
 })

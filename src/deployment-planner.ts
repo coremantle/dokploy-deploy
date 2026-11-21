@@ -29,15 +29,21 @@ import { diffDomains } from '#domains/domain-diff.ts'
 import type {
   DokployClientShape,
   DokployError,
+  VaultProvider,
 } from '#dokploy/dokploy-client.ts'
 import { DokployClient } from '#dokploy/dokploy-client.ts'
 import type {
   DokployNames,
   DokployTarget,
   DokployTargetError,
+  OpenBaoProvider,
   VaultProviderError,
 } from '#dokploy/dokploy-target.ts'
-import { findVaultProvider, resolveTarget } from '#dokploy/dokploy-target.ts'
+import {
+  findOpenBaoProvider,
+  findVaultProvider,
+  resolveTarget,
+} from '#dokploy/dokploy-target.ts'
 import { EffectService } from '#effect/index.ts'
 import type {
   AppVersion,
@@ -57,7 +63,34 @@ import {
 } from '#env/env-references.ts'
 import type { EnvDiff } from '#env/env-diff.ts'
 import { diffEnv } from '#env/env-diff.ts'
-import type { Manifest, ManifestEnvironment } from '#manifest/manifest.ts'
+import type {
+  DuplicateSecretKeyError,
+  MissingSecretReferencesError,
+  MountGuardError,
+  OpenBaoEntry,
+  OpenBaoReference,
+  VersionKeyMappedError,
+} from '#env/openbao-references.ts'
+import {
+  checkListedReferences,
+  guardMount,
+  openBaoEntries,
+  referenceName,
+  referencesOf,
+  renderOpenBaoEnvironment,
+} from '#env/openbao-references.ts'
+import type {
+  Manifest,
+  ManifestEnvironment,
+  OpenBaoSecrets,
+} from '#manifest/manifest.ts'
+import { isOpenBao } from '#manifest/manifest.ts'
+import type {
+  OpenBaoMetadataShape,
+  OpenBaoRequestError,
+  SecretState,
+} from '#openbao/openbao-metadata.ts'
+import { OpenBaoMetadata, secretLocation } from '#openbao/openbao-metadata.ts'
 import type {
   WorkspaceFileError,
   WorkspaceFilesShape,
@@ -87,11 +120,50 @@ export class UnknownEnvironmentError extends Schema.TaggedError<UnknownEnvironme
   }
 }
 
+export class OpenBaoSecretStateError extends Schema.TaggedError<OpenBaoSecretStateError>()(
+  'OpenBaoSecretStateError',
+  { secrets: Schema.Array(Schema.String), message: Schema.String },
+) {
+  static forSecrets(
+    secrets: ReadonlyArray<{
+      readonly location: string
+      readonly state: SecretState
+    }>,
+  ): OpenBaoSecretStateError {
+    const lines = Array.map(
+      secrets,
+      ({ location, state }) => `${location} (${state})`,
+    )
+    return new OpenBaoSecretStateError({
+      secrets: lines,
+      message: `OpenBao holds no live version of ${lines.join(', ')}: the Dokploy deploy would fail`,
+    })
+  }
+}
+
+export interface OpenBaoProviderPlan {
+  readonly name: string
+  readonly mount: string
+  readonly references: ReadonlyArray<string>
+}
+
+export type SecretsPlan =
+  | {
+      readonly kind: 'infisical'
+      readonly provider: string
+      readonly folder: string
+    }
+  | {
+      readonly kind: 'openbao'
+      readonly providers: ReadonlyArray<OpenBaoProviderPlan>
+      readonly metadataChecked: boolean
+    }
+
 export interface DeploymentPlan {
   readonly environment: string
   readonly dokploy: DokployNames & DokployTarget
-  readonly provider: string
-  readonly folder: string
+  readonly secrets: SecretsPlan
+  readonly unverifiedReferences: ReadonlyArray<string>
   readonly keys: ReadonlyArray<string>
   readonly env: string
   readonly version: Option.Option<AppVersion>
@@ -120,6 +192,12 @@ export type DeploymentPlanError =
   | NoSecretKeysError
   | VersionWithoutCommitError
   | VersionKeyCollisionError
+  | DuplicateSecretKeyError
+  | MountGuardError
+  | MissingSecretReferencesError
+  | VersionKeyMappedError
+  | OpenBaoRequestError
+  | OpenBaoSecretStateError
 
 export interface DeploymentPlannerShape {
   readonly plan: Effect.Effect<DeploymentPlan, DeploymentPlanError>
@@ -129,6 +207,7 @@ interface DeploymentPlannerDependencies {
   readonly inputs: ActionInputsShape
   readonly workspaceFiles: WorkspaceFilesShape
   readonly dokploy: DokployClientShape
+  readonly openbao: OpenBaoMetadataShape
 }
 
 interface SelectedEnvironment {
@@ -166,13 +245,97 @@ function selectEnvironment({
 }
 
 interface ResolvedEnvironment extends SelectedEnvironment {
+  readonly source: SecretSource
   readonly compose: ComposeFile
   readonly domains: ReadonlyArray<DesiredDomain>
   readonly target: DokployTarget
 }
 
-function providerOf({ dokploy, secrets }: ManifestEnvironment): string {
-  return secrets?.provider ?? defaultProviderName(dokploy)
+type SecretSource =
+  | {
+      readonly kind: 'infisical'
+      readonly provider: string
+      readonly folder: string
+    }
+  | { readonly kind: 'openbao'; readonly secrets: OpenBaoSecrets }
+
+function infisicalProviderOf({
+  dokploy,
+  secrets,
+}: ManifestEnvironment): string {
+  return secrets !== undefined && 'provider' in secrets
+    ? secrets.provider
+    : defaultProviderName(dokploy)
+}
+
+function infisicalSourceOf({
+  manifest,
+  environment,
+}: Pick<SelectedEnvironment, 'manifest' | 'environment'>) {
+  return pipe(
+    Option.fromUndefinedOr(manifest.secrets),
+    // Defect: the manifest schema refuses an Infisical environment without the top-level secrets.folder.
+    Effect.fromOption(() => 'an Infisical environment needs secrets.folder'),
+    Effect.orDie,
+    Effect.map(({ folder }): SecretSource => ({
+      folder,
+      kind: 'infisical',
+      provider: infisicalProviderOf(environment),
+    })),
+    Effect.withSpan('DeploymentPlanner.infisicalSource'),
+  )
+}
+
+function secretSourceOf(
+  selected: Pick<SelectedEnvironment, 'manifest' | 'environment'>,
+) {
+  const { environment } = selected
+  const source: Effect.Effect<SecretSource> = isOpenBao(environment)
+    ? Effect.succeed({ kind: 'openbao', secrets: environment.secrets })
+    : infisicalSourceOf(selected)
+  return pipe(source, Effect.withSpan('DeploymentPlanner.secretSource'))
+}
+
+function guardSource({
+  source,
+  project,
+}: {
+  readonly source: SecretSource
+  readonly project: string
+}) {
+  return pipe(
+    source.kind === 'infisical'
+      ? guardFolder({ project, folder: source.folder })
+      : Effect.void,
+    Effect.withSpan('DeploymentPlanner.guardSource', {
+      attributes: { kind: source.kind },
+    }),
+  )
+}
+
+function resolveOpenBaoProvider({
+  providers,
+  name,
+  project,
+}: {
+  readonly providers: ReadonlyArray<VaultProvider>
+  readonly name: string
+  readonly project: string
+}) {
+  return pipe(
+    findOpenBaoProvider({ providers, name }),
+    Effect.tap(({ mount }) => guardMount({ mount, project, provider: name })),
+    Effect.withSpan('DeploymentPlanner.resolveOpenBaoProvider', {
+      attributes: { provider: name },
+    }),
+  )
+}
+
+interface RenderedSecrets {
+  readonly secrets: SecretsPlan
+  readonly keys: ReadonlyArray<string>
+  readonly env: string
+  readonly unverifiedReferences: ReadonlyArray<string>
 }
 
 class ManifestDeploymentPlanner implements DeploymentPlannerShape {
@@ -205,13 +368,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
       Effect.flatMap(({ manifest, version }) =>
         selectEnvironment({ manifest, version, name: inputs.environment }),
       ),
-      Effect.tap(({ manifest, environment }) =>
-        guardFolder({
-          folder: manifest.secrets.folder,
-          project: environment.dokploy.project,
-        }),
-      ),
-      Effect.flatMap((selected) => this.planEnvironment(selected)),
+      Effect.flatMap((selected) => this.planSelected(selected)),
       Effect.withSpan('DeploymentPlanner.plan', {
         attributes: {
           manifest: inputs.manifest,
@@ -221,11 +378,23 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     )
   }
 
+  private planSelected(selected: SelectedEnvironment) {
+    return pipe(
+      secretSourceOf(selected),
+      Effect.tap((source) =>
+        guardSource({ source, project: selected.environment.dokploy.project }),
+      ),
+      Effect.flatMap((source) => this.planEnvironment({ ...selected, source })),
+      Effect.withSpan('DeploymentPlanner.planSelected'),
+    )
+  }
+
   private planEnvironment({
     manifest,
     environment,
     version,
-  }: SelectedEnvironment) {
+    source,
+  }: SelectedEnvironment & { readonly source: SecretSource }) {
     const { workspaceFiles } = this.dependencies
     return pipe(
       workspaceFiles.readCompose(manifest.composeFile),
@@ -242,7 +411,7 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
         }),
       ),
       Effect.flatMap((resolved) =>
-        this.planKeys({ manifest, environment, version, ...resolved }),
+        this.planKeys({ manifest, environment, version, source, ...resolved }),
       ),
       Effect.withSpan('DeploymentPlanner.planEnvironment'),
     )
@@ -251,16 +420,215 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   private planKeys(context: ResolvedEnvironment) {
     const { manifest, compose } = context
     return pipe(
-      this.listKeys(context),
-      Effect.flatMap((keys) => this.renderPlan({ ...context, keys })),
-      Effect.tap(({ keys, version }) =>
+      this.renderSecrets(context),
+      Effect.tap(({ keys }) =>
         checkComposeVariables({
-          keys: [...keys, ...Option.toArray(version).map(({ key }) => key)],
+          keys: [
+            ...keys,
+            ...Option.toArray(context.version).map(({ key }) => key),
+          ],
           compose: manifest.composeFile,
           requiredVariables: compose.requiredVariables,
         }),
       ),
+      Effect.flatMap((rendered) => this.renderPlan({ ...context, rendered })),
       Effect.withSpan('DeploymentPlanner.planKeys'),
+    )
+  }
+
+  private renderSecrets(context: ResolvedEnvironment) {
+    const { source } = context
+    const rendered: Effect.Effect<RenderedSecrets, DeploymentPlanError> =
+      source.kind === 'infisical'
+        ? this.renderInfisical({ ...context, source })
+        : this.renderOpenBao({ ...context, secrets: source.secrets })
+    return pipe(
+      rendered,
+      Effect.withSpan('DeploymentPlanner.renderSecrets', {
+        attributes: { kind: source.kind },
+      }),
+    )
+  }
+
+  private renderInfisical({
+    source,
+    target,
+    version,
+  }: ResolvedEnvironment & {
+    readonly source: { readonly provider: string; readonly folder: string }
+  }) {
+    return pipe(
+      this.listKeys({ source, target }),
+      Effect.flatMap((keys) =>
+        Effect.all({
+          keys: Effect.succeed(keys),
+          env: renderEnvironment({ ...source, keys, version }),
+        }),
+      ),
+      Effect.map(({ keys, env }): RenderedSecrets => ({
+        keys,
+        env,
+        secrets: {
+          kind: 'infisical',
+          provider: source.provider,
+          folder: source.folder,
+        },
+        unverifiedReferences: [],
+      })),
+      Effect.withSpan('DeploymentPlanner.renderInfisical'),
+    )
+  }
+
+  private renderOpenBao(
+    context: ResolvedEnvironment & { readonly secrets: OpenBaoSecrets },
+  ) {
+    return pipe(
+      openBaoEntries(context.secrets),
+      Effect.flatMap((entries) =>
+        Effect.all({
+          entries: Effect.succeed(entries),
+          checked: this.checkOpenBao({ ...context, entries }),
+          env: renderOpenBaoEnvironment({ entries, version: context.version }),
+        }),
+      ),
+      Effect.map(({ entries, checked, env }): RenderedSecrets => ({
+        env,
+        secrets: {
+          kind: 'openbao',
+          providers: checked.providers,
+          metadataChecked: this.dependencies.openbao.enabled,
+        },
+        keys: Array.map(entries, ({ key }) => key),
+        unverifiedReferences: checked.unverified,
+      })),
+      Effect.withSpan('DeploymentPlanner.renderOpenBao'),
+    )
+  }
+
+  private checkOpenBao({
+    environment,
+    target,
+    entries,
+  }: ResolvedEnvironment & { readonly entries: ReadonlyArray<OpenBaoEntry> }) {
+    const { dokploy } = this.dependencies
+    const references = referencesOf(entries)
+    const names = pipe(
+      entries,
+      Array.map(({ provider }) => provider),
+      Array.dedupe,
+      Array.sort(Order.String),
+    )
+    return pipe(
+      dokploy.vaultProviders,
+      Effect.flatMap((providers) =>
+        Effect.forEach(names, (name) =>
+          resolveOpenBaoProvider({
+            providers,
+            name,
+            project: environment.dokploy.project,
+          }),
+        ),
+      ),
+      Effect.flatMap(
+        Effect.forEach((provider) =>
+          this.listedReferences({ provider, references, target }),
+        ),
+      ),
+      Effect.tap((checked) =>
+        this.checkMetadata({
+          references,
+          providers: Array.map(checked, ({ provider }) => provider),
+        }),
+      ),
+      Effect.map((checked) => ({
+        providers: Array.map(checked, ({ provider }): OpenBaoProviderPlan => ({
+          name: provider.name,
+          mount: provider.mount,
+          references: pipe(
+            references,
+            Array.filter((reference) => reference.provider === provider.name),
+            Array.map(referenceName),
+            Array.sort(Order.String),
+          ),
+        })),
+        unverified: Array.flatMap(checked, ({ unverified }) => unverified),
+      })),
+      Effect.withSpan('DeploymentPlanner.checkOpenBao'),
+    )
+  }
+
+  private listedReferences({
+    provider,
+    references,
+    target,
+  }: {
+    readonly provider: OpenBaoProvider
+    readonly references: ReadonlyArray<OpenBaoReference>
+    readonly target: DokployTarget
+  }) {
+    return pipe(
+      this.dependencies.dokploy.listSecretNames({
+        vaultProviderId: provider.vaultProviderId,
+        projectId: target.projectId,
+        environmentId: target.environmentId,
+      }),
+      Effect.flatMap((listed) =>
+        checkListedReferences({ references, listed, provider: provider.name }),
+      ),
+      Effect.map((unverified) => ({ provider, unverified })),
+      Effect.withSpan('DeploymentPlanner.listedReferences', {
+        attributes: { provider: provider.name },
+      }),
+    )
+  }
+
+  private checkMetadata({
+    references,
+    providers,
+  }: {
+    readonly references: ReadonlyArray<OpenBaoReference>
+    readonly providers: ReadonlyArray<{
+      readonly name: string
+      readonly mount: string
+      readonly namespace: Option.Option<string>
+    }>
+  }) {
+    const { openbao } = this.dependencies
+    const secrets = pipe(
+      providers,
+      Array.flatMap(({ name, mount, namespace }) =>
+        pipe(
+          references,
+          Array.filter(({ provider }) => provider === name),
+          Array.map(({ path }) => path),
+          Array.dedupe,
+          Array.map((path) => ({ mount, namespace, path })),
+        ),
+      ),
+    )
+    return pipe(
+      openbao.enabled
+        ? pipe(
+            Effect.forEach(
+              secrets,
+              (secret) =>
+                Effect.map(openbao.secretState(secret), (state) => ({
+                  state,
+                  location: secretLocation(secret),
+                })),
+              { concurrency: 4 },
+            ),
+            Effect.map(Array.filter(({ state }) => state !== 'live')),
+            Effect.flatMap((notLive) =>
+              Array.isReadonlyArrayEmpty(notLive)
+                ? Effect.void
+                : Effect.fail(OpenBaoSecretStateError.forSecrets(notLive)),
+            ),
+          )
+        : Effect.void,
+      Effect.withSpan('DeploymentPlanner.checkMetadata', {
+        attributes: { enabled: openbao.enabled, secrets: secrets.length },
+      }),
     )
   }
 
@@ -271,23 +639,13 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     compose,
     domains,
     target,
-    keys,
-  }: ResolvedEnvironment & { readonly keys: ReadonlyArray<string> }) {
-    const provider = providerOf(environment)
-    const { folder } = manifest.secrets
+    rendered,
+  }: ResolvedEnvironment & { readonly rendered: RenderedSecrets }) {
+    const { env } = rendered
     return pipe(
-      renderEnvironment({ provider, folder, keys, version }),
-      Effect.flatMap((env) =>
-        Effect.all({
-          env: Effect.succeed(env),
-          changes: this.changesAgainst({ target, env, domains }),
-        }),
-      ),
-      Effect.map(({ env, changes }): DeploymentPlan => ({
-        provider,
-        folder,
-        keys,
-        env,
+      this.changesAgainst({ target, env, domains }),
+      Effect.map((changes): DeploymentPlan => ({
+        ...rendered,
         version,
         domains,
         changes,
@@ -340,18 +698,20 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   }
 
   private listKeys({
-    manifest,
-    environment,
+    source,
     target,
-  }: SelectedEnvironment & { readonly target: DokployTarget }) {
+  }: {
+    readonly source: { readonly provider: string; readonly folder: string }
+    readonly target: DokployTarget
+  }) {
     const { dokploy } = this.dependencies
     return pipe(
       dokploy.vaultProviders,
       Effect.flatMap((providers) =>
         findVaultProvider({
           providers,
-          name: providerOf(environment),
-          folder: manifest.secrets.folder,
+          name: source.provider,
+          folder: source.folder,
         }),
       ),
       Effect.flatMap(({ vaultProviderId }) =>
@@ -378,6 +738,7 @@ export class DeploymentPlanner extends Context.Service<
         inputs: ActionInputs,
         workspaceFiles: WorkspaceFiles,
         dokploy: DokployClient,
+        openbao: OpenBaoMetadata,
       }),
       (dependencies) => ManifestDeploymentPlanner.make(dependencies),
     ),
@@ -397,8 +758,8 @@ export class DeploymentPlanner extends Context.Service<
           environmentId: 'test-environment-id',
           composeId: 'test-compose-id',
         },
-        provider: 'demo-prod',
-        folder: '/demo',
+        secrets: { kind: 'infisical', provider: 'demo-prod', folder: '/demo' },
+        unverifiedReferences: [],
         keys: ['MESSAGE'],
         env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
         version: Option.none(),
