@@ -8,6 +8,7 @@ import { DeployAction } from '#deploy-action.ts'
 import { DeploymentApplier } from '#deployment-applier.ts'
 import { DeploymentPlanner } from '#deployment-planner.ts'
 import { DokployClient } from '#dokploy/dokploy-client.ts'
+import { OpenBaoMetadata } from '#openbao/openbao-metadata.ts'
 import { PullRequestComments } from '#pull-request-comments.ts'
 import { WorkflowCommands } from '#workflow-commands.ts'
 import { WorkspaceFiles } from '#workspace-files.ts'
@@ -21,6 +22,7 @@ const plannerLayer = DeploymentPlanner.layer.pipe(
     Layer.mergeAll(
       WorkspaceFiles.layer.pipe(Layer.provide(NodeFileSystem.layer)),
       dokployLayer,
+      OpenBaoMetadata.layer.pipe(Layer.provide(FetchHttpClient.layer)),
     ),
   ),
 )

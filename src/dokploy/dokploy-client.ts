@@ -30,6 +30,8 @@ export const VaultProvider = Schema.Struct({
   providerType: Schema.String,
   config: Schema.Struct({
     secretPath: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    mount: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    namespace: Schema.optionalKey(Schema.NullOr(Schema.String)),
   }),
 })
 

@@ -60,7 +60,7 @@ describe('WorkspaceFiles', () => {
       )
 
       // Then: it is decoded with its defaults
-      expect(decoded.secrets.folder).toBe('/demo')
+      expect(decoded.secrets?.folder).toBe('/demo')
       expect(decoded.composeFile).toBe('docker-compose.dokploy.yml')
     }),
   )

@@ -5038,7 +5038,7 @@ var init_tracer = __esm({
 function interruptChildrenPatch() {
   fiberMiddleware.interruptChildren ??= fiberInterruptChildren;
 }
-var Interrupt, makeInterruptReason, causeInterrupt, hasFails, findFail, findError, findErrorOption, hasDies, causeElectDefects, findRecoverableError, findDie, findDefect, hasInterrupts, findInterrupt, causeFilterInterruptors, causeInterruptors, emptySet, hasInterruptsOnly, reasonAnnotations, causeAnnotations, causeMap, causeSquash, causePrettyErrors, causePrettyError, causePrettyMessage, locationRegExp, cleanErrorStack, addStackAnnotations, interruptCauseStack, currentStackTrace, causePretty, renderPrettyError, renderErrorCause, FiberTypeId, fiberVariance, fiberIdStore, AsyncResource, captureAsyncContext, getCurrentFiber, FiberImpl, makeFiberContextCache, deferredInterruptCont, maxInlineSteps, fiberMiddleware, fiberStackAnnotations, fiberInterruptChildren, fiberAwait, fiberAwaitAll, fiberJoin, fiberInterrupt, fiberInterruptAs, fiberInterruptAll, succeed3, failCause, fail3, sync, suspend, fromOption4, fromResult, fromNullishOr3, yieldNowWith, yieldNow, succeedSome, succeedNone, transposeOption, failCauseSync, die, failSync, void_2, try_2, promise, tryPromise, withFiberId, fiber, fiberId, callbackOptions, asyncFinalizer, callback, never, gen2, fnBody, fnUntraced, defineFunctionLength, fnStackCleaner, fn, makeFn, fnUntracedEager, fromIteratorEagerUnsafe, fromIteratorUnsafe, as2, evaluateCont, OnSuccessProto, ContImpl, returnPayload, succeedPayload, continuationMarksStack, mapCont, andThenCont, tapCont, tapEffectCont, asSome, flip2, andThen2, tap2, asVoid2, sandbox, raceAll, raceAllFirst, interruptRaceLosers, race, raceFirst, flatMap4, matchCauseEffectEager, effectIsExit, flatMapEager, flatten4, map5, mapEager, mapErrorEager, mapBothEager, catchEager, exitInterrupt, exitIsSuccess, exitIsFailure, exitFilterCause, exitHasInterrupts, exitVoid, exitMap, exitMapError, exitMapBoth, exitZipRight, exitAsVoidAll, service, serviceOption, serviceOptional, updateContext, updateService, updateServiceScoped, context, getContext, contextWith, setContext, provideContext, provideService, provideServiceImpl, provideServiceEffect, zip2, zipWith3, filterOrFail, when, replicate2, replicateEffect, forever, catchCause, OnFailureProto, OnFailureImpl, catchCauseIf, catchCauseFilter, catch_, catchNoSuchElement, catchDefect, tapCause, tapCauseIf, tapCauseFilter, tapError, tapErrorTag, tapDefect, catchIf, catchFilter, catchTag, catchTags, catchReason, catchReasons, unwrapReason, mapError2, mapBoth, orDie, orElseSucceed, firstSuccessOf, eventually, ignoreCauseLogger, ignore, ignoreCause, option, result, matchCauseEffect, OnSuccessAndFailureProto, OnSuccessAndFailureImpl, matchSuccess, makeMatch, MatchImpl, MatchCauseImpl, matchCause, matchEffect, match5, matchEager, matchCauseEager, exit, exitPrimitive, isFailure3, isSuccess3, delay, timeoutOrElse, timeoutErrorFromDuration, timeout, timeoutOption, timed, ScopeTypeId, ScopeCloseableTypeId, scopeTag, scopeClose, scopeCloseUnsafe, runFinalizer, combineFinalizerCause, scopeCloseFinalizers, scopeForkUnsafe, scopeAddFinalizerExit, scopeAddFinalizer, scopeAddFinalizerUnsafe, scopeRemoveFinalizerUnsafe, scopeMakeUnsafe, makeScope, constScopeEmpty, scope, provideScope, scoped, scopedWith, acquireRelease, addFinalizer, OnExitImpl, onExitPrimitive, onExitUnsafe, onExit, ensuring, onExitIf, onExitFilter, onError, onErrorIf, onErrorFilter, onInterrupt, acquireUseRelease, acquireDisposable, cachedInvalidateWithTTL, infiniteTTL, makeCachedUnsafe, cachedWithTTL, cached, interrupt, uninterruptible, setInterruptible, setInterruptibleTrue, setInterruptibleFalse, setFiberInterruptible, fiberEnterUninterruptibleUnsafe, interruptible, uninterruptibleMask, interruptibleMask, abortSignal, all3, partition3, reduce3, validate, findFirst4, findFirstLoop, findFirstFilter, findFirstFilterLoop, whileLoop, forEach2, head2, forEachSequential, resolveConcurrency, iterateEager, iterateConcurrentImpl, iterateConcurrent, forEachConcurrent, filterOrElse, filterMapOrElse, filterMapOrFail, filter5, filterMap4, filterMapEffect, Do3, bindTo4, bind4, let_4, forkChild, forkUnsafe, forkDetach, awaitAllChildren, fiberScopeFinalizer, forkIn, forkScoped, runForkWith, runFork, runCallbackWith, runCallback, runPromiseExitWith, runPromiseExit, runPromiseWith, runPromise, runSyncExitWith, runSyncExit, runSyncWith, runSync, succeedTrue, succeedFalse, Latch, makeLatchUnsafe, tracer, withTracer, withTracerEnabled, withTracerTiming, bigint02, NoopSpanProto, noopSpan, filterDisablePropagation, makeSpanUnsafe, makeSpan, makeSpanScoped, withSpanScoped, provideSpanStackFrame, spanAnnotations, spanLinks, linkSpans, endSpan, useSpan, provideParentSpan, withParentSpan, withSpan, annotateSpans, annotateCurrentSpan, currentSpan, currentParentSpan, ClockRef, MAX_TIMER_MILLIS, ClockImpl, nanosPerMilli, monotonicNowNanos, wallTimeNanos, clockWith, sleep, currentTimeMillis, TimeoutErrorTypeId, isTimeoutError, TimeoutError, IllegalArgumentErrorTypeId, isIllegalArgumentError, IllegalArgumentError, ExceededCapacityErrorTypeId, isExceededCapacityError, ExceededCapacityError, AsyncFiberErrorTypeId, isAsyncFiberError, AsyncFiberError, UnknownErrorTypeId, isUnknownError, UnknownError, ConsoleRef, logLevelToOrder, LogLevelOrder, isLogLevelGreaterThan, CurrentLoggers, LogToStderr, annotateLogsScoped, LoggerTypeId, LoggerProto, loggerMake, formatLabel, formatLogSpan, structuredMessage, logWithLevel, withColor, withColorNoop, colors, logLevelColors, logLevelStyle, defaultDateFormat, consolePretty, prettyLoggerTty, prettyLoggerBrowser, defaultLogger, tracerLogger, undefined_, withErrorReporting, reportCauseUnsafe;
+var Interrupt, makeInterruptReason, causeInterrupt, hasFails, findFail, findError, findErrorOption, hasDies, causeElectDefects, findRecoverableError, findDie, findDefect, hasInterrupts, findInterrupt, causeFilterInterruptors, causeInterruptors, emptySet, hasInterruptsOnly, reasonAnnotations, causeAnnotations, causeMap, causeSquash, causePrettyErrors, causePrettyError, causePrettyMessage, locationRegExp, cleanErrorStack, addStackAnnotations, interruptCauseStack, currentStackTrace, causePretty, renderPrettyError, renderErrorCause, FiberTypeId, fiberVariance, fiberIdStore, AsyncResource, captureAsyncContext, getCurrentFiber, FiberImpl, makeFiberContextCache, deferredInterruptCont, maxInlineSteps, fiberMiddleware, fiberStackAnnotations, fiberInterruptChildren, fiberAwait, fiberAwaitAll, fiberJoin, fiberInterrupt, fiberInterruptAs, fiberInterruptAll, succeed3, failCause, fail3, sync, suspend, fromOption4, fromResult, fromNullishOr3, yieldNowWith, yieldNow, succeedSome, succeedNone, transposeOption, failCauseSync, die, failSync, void_2, try_2, promise, tryPromise, withFiberId, fiber, fiberId, callbackOptions, asyncFinalizer, callback, never, gen2, fnBody, fnUntraced, defineFunctionLength, fnStackCleaner, fn, makeFn, fnUntracedEager, fromIteratorEagerUnsafe, fromIteratorUnsafe, as2, evaluateCont, OnSuccessProto, ContImpl, returnPayload, succeedPayload, continuationMarksStack, mapCont, andThenCont, tapCont, tapEffectCont, asSome, flip2, andThen2, tap2, asVoid2, sandbox, raceAll, raceAllFirst, interruptRaceLosers, race, raceFirst, flatMap4, matchCauseEffectEager, effectIsExit, flatMapEager, flatten4, map5, mapEager, mapErrorEager, mapBothEager, catchEager, exitInterrupt, exitIsSuccess, exitIsFailure, exitFilterCause, exitHasInterrupts, exitVoid, exitMap, exitMapError, exitMapBoth, exitZipRight, exitAsVoidAll, service, serviceOption, serviceOptional, updateContext, updateService, updateServiceScoped, context, getContext, contextWith, setContext, provideContext, provideService, provideServiceImpl, provideServiceEffect, zip2, zipWith3, filterOrFail, when, replicate2, replicateEffect, forever, catchCause, OnFailureProto, OnFailureImpl, catchCauseIf, catchCauseFilter, catch_, catchNoSuchElement, catchDefect, tapCause, tapCauseIf, tapCauseFilter, tapError, tapErrorTag, tapDefect, catchIf, catchFilter, catchTag, catchTags, catchReason, catchReasons, unwrapReason, mapError2, mapBoth, orDie, orElseSucceed, firstSuccessOf, eventually, ignoreCauseLogger, ignore, ignoreCause, option, result, matchCauseEffect, OnSuccessAndFailureProto, OnSuccessAndFailureImpl, matchSuccess, makeMatch, MatchImpl, MatchCauseImpl, matchCause, matchEffect, match5, matchEager, matchCauseEager, exit, exitPrimitive, isFailure3, isSuccess3, delay, timeoutOrElse, timeoutErrorFromDuration, timeout, timeoutOption, timed, ScopeTypeId, ScopeCloseableTypeId, scopeTag, scopeClose, scopeCloseUnsafe, runFinalizer, combineFinalizerCause, scopeCloseFinalizers, scopeForkUnsafe, scopeAddFinalizerExit, scopeAddFinalizer, scopeAddFinalizerUnsafe, scopeRemoveFinalizerUnsafe, scopeMakeUnsafe, makeScope, constScopeEmpty, scope, provideScope, scoped, scopedWith, acquireRelease, addFinalizer, OnExitImpl, onExitPrimitive, onExitUnsafe, onExit, ensuring, onExitIf, onExitFilter, onError, onErrorIf, onErrorFilter, onInterrupt, acquireUseRelease, acquireDisposable, cachedInvalidateWithTTL, infiniteTTL, makeCachedUnsafe, cachedWithTTL, cached, interrupt, uninterruptible, setInterruptible, setInterruptibleTrue, setInterruptibleFalse, setFiberInterruptible, fiberEnterUninterruptibleUnsafe, interruptible, uninterruptibleMask, interruptibleMask, abortSignal, all3, partition3, reduce3, validate, findFirst4, findFirstLoop, findFirstFilter, findFirstFilterLoop, whileLoop, forEach2, head2, forEachSequential, resolveConcurrency, iterateEager, iterateConcurrentImpl, iterateConcurrent, forEachConcurrent, filterOrElse, filterMapOrElse, filterMapOrFail, filter5, filterMap4, filterMapEffect, Do3, bindTo4, bind4, let_4, forkChild, forkUnsafe, forkDetach, awaitAllChildren, fiberScopeFinalizer, forkIn, forkScoped, runForkWith, runFork, runCallbackWith, runCallback, runPromiseExitWith, runPromiseExit, runPromiseWith, runPromise, runSyncExitWith, runSyncExit, runSyncWith, runSync, succeedTrue, succeedFalse, Latch, makeLatchUnsafe, tracer, withTracer, withTracerEnabled, withTracerTiming, bigint02, NoopSpanProto, noopSpan, filterDisablePropagation, makeSpanUnsafe, makeSpan, makeSpanScoped, withSpanScoped, provideSpanStackFrame, spanAnnotations, spanLinks, linkSpans, endSpan, useSpan, provideParentSpan, withParentSpan, withSpan, annotateSpans, annotateCurrentSpan, currentSpan, currentParentSpan, ClockRef, MAX_TIMER_MILLIS, ClockImpl, nanosPerMilli, monotonicNowNanos, wallTimeNanos, clockWith, sleep, currentTimeMillis, currentTimeNanos, monotonicTimeNanos, TimeoutErrorTypeId, isTimeoutError, TimeoutError, IllegalArgumentErrorTypeId, isIllegalArgumentError, IllegalArgumentError, ExceededCapacityErrorTypeId, isExceededCapacityError, ExceededCapacityError, AsyncFiberErrorTypeId, isAsyncFiberError, AsyncFiberError, UnknownErrorTypeId, isUnknownError, UnknownError, ConsoleRef, logLevelToOrder, LogLevelOrder, isLogLevelGreaterThan, CurrentLoggers, LogToStderr, annotateLogsScoped, LoggerTypeId, LoggerProto, loggerMake, formatLabel, formatLogSpan, structuredMessage, logWithLevel, withColor, withColorNoop, colors, logLevelColors, logLevelStyle, defaultDateFormat, consolePretty, prettyLoggerTty, prettyLoggerBrowser, defaultLogger, tracerLogger, undefined_, withErrorReporting, reportCauseUnsafe;
 var init_effect = __esm({
   "node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/internal/effect.js"() {
     init_Array();
@@ -7527,6 +7527,8 @@ ${prefix}}`;
     clockWith = (f) => withFiber((fiber3) => f(fiber3.getRef(ClockRef)));
     sleep = (duration2) => clockWith((clock) => clock.sleep(fromInputUnsafe(duration2)));
     currentTimeMillis = /* @__PURE__ */ clockWith((clock) => clock.currentTimeMillis);
+    currentTimeNanos = /* @__PURE__ */ clockWith((clock) => clock.currentTimeNanos);
+    monotonicTimeNanos = /* @__PURE__ */ clockWith((clock) => clock.monotonicTimeNanos);
     TimeoutErrorTypeId = "~effect/Cause/TimeoutError";
     isTimeoutError = (u) => hasProperty(u, TimeoutErrorTypeId);
     TimeoutError = class extends (/* @__PURE__ */ TaggedError("TimeoutError")) {
@@ -8454,11 +8456,23 @@ var init_Cause = __esm({
 });
 
 // node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/Clock.js
-var Clock;
+var Clock_exports = {};
+__export(Clock_exports, {
+  Clock: () => Clock,
+  clockWith: () => clockWith2,
+  currentTimeMillis: () => currentTimeMillis2,
+  currentTimeNanos: () => currentTimeNanos2,
+  monotonicTimeNanos: () => monotonicTimeNanos2
+});
+var Clock, clockWith2, currentTimeMillis2, currentTimeNanos2, monotonicTimeNanos2;
 var init_Clock = __esm({
   "node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/Clock.js"() {
     init_effect();
     Clock = ClockRef;
+    clockWith2 = clockWith;
+    currentTimeMillis2 = currentTimeMillis;
+    currentTimeNanos2 = currentTimeNanos;
+    monotonicTimeNanos2 = monotonicTimeNanos;
   }
 });
 
@@ -10649,7 +10663,7 @@ __export(Effect_exports, {
   catchReasons: () => catchReasons2,
   catchTag: () => catchTag3,
   catchTags: () => catchTags2,
-  clockWith: () => clockWith2,
+  clockWith: () => clockWith3,
   context: () => context2,
   contextWith: () => contextWith2,
   currentParentSpan: () => currentParentSpan2,
@@ -10862,7 +10876,7 @@ function clearTransaction(state) {
   state.retry = false;
   state.journal.clear();
 }
-var TypeId15, isEffect2, all4, partition4, reduce4, validate2, findFirst5, findFirstFilter2, forEach3, head3, whileLoop2, promise2, tryPromise2, succeed6, succeedNone2, succeedSome2, suspend3, sync3, void_4, undefined_2, callback2, never2, Do4, bindTo5, let_5, bind5, gen3, fail6, failSync2, failCause3, failCauseSync2, die3, try_3, yieldNow2, yieldNowWith2, withFiber2, withFiberSucceed2, fromResult2, fromOption5, transposeOption2, fromNullishOr4, flatMap6, flatten5, andThen3, tap5, result2, option2, exit2, map8, as3, asSome2, asVoid3, flip3, zip3, zipWith4, catch_3, catchTag3, catchTags2, catchReason2, catchReasons2, unwrapReason2, catchCause3, catchDefect2, catchIf2, catchFilter2, catchNoSuchElement2, catchCauseIf2, catchCauseFilter2, mapError3, mapBoth2, orDie3, tapError3, tapErrorTag2, tapCause3, tapCauseIf2, tapCauseFilter2, tapDefect2, eventually2, retry2, retryOrElse2, sandbox2, ignore2, ignoreCause2, withExecutionPlan2, withErrorReporting2, orElseSucceed2, firstSuccessOf2, timeout2, timeoutOption2, timeoutOrElse2, delay2, sleep2, timed2, raceAll2, raceAllFirst2, race2, raceFirst2, filter6, filterMap5, filterMapEffect2, filterOrElse2, filterMapOrElse2, filterOrFail2, filterMapOrFail2, when2, match6, matchEager2, matchCause2, matchCauseEager2, matchCauseEffectEager2, matchCauseEffect2, matchEffect3, isFailure5, isSuccess5, context2, contextWith2, provide4, provideContext2, setContext2, service2, serviceOption2, updateContext2, updateService3, updateServiceScoped2, provideService2, provideServiceEffect2, scope2, scoped2, scopedWith2, acquireRelease2, acquireDisposable2, acquireUseRelease2, addFinalizer3, ensuring2, onError2, onErrorIf2, onErrorFilter2, onExitPrimitive2, onExit2, onExitIf2, onExitFilter2, cached2, cachedWithTTL2, cachedInvalidateWithTTL2, interrupt3, interruptible2, onInterrupt2, uninterruptible2, uninterruptibleMask2, interruptibleMask2, abortSignal2, forever3, repeat2, repeatOrElse2, replicate3, replicateEffect2, schedule, scheduleFrom2, tracer2, withTracer2, withTracerEnabled2, withTracerTiming2, annotateSpans2, annotateCurrentSpan2, currentSpan2, currentParentSpan2, spanAnnotations2, spanLinks2, linkSpans2, makeSpan2, makeSpanScoped2, useSpan2, withSpan3, withSpanScoped2, withParentSpan3, request2, requestUnsafe2, forkChild2, forkIn2, forkScoped2, forkDetach2, awaitAllChildren2, fiber2, fiberId2, runFork2, runForkWith2, runCallbackWith2, runCallback2, runPromise2, runPromiseWith2, runPromiseExit2, runPromiseExitWith2, runSync2, runSyncWith2, runSyncExit2, runSyncExitWith2, fnUntraced2, fn2, clockWith2, logWithLevel2, log, logFatal, logWarning, logError, logInfo, logDebug, logTrace, withLogger, annotateLogs, annotateLogsScoped2, withLogSpan, track, trackSuccesses, trackErrors, trackDefects, trackDuration, Transaction, tx, completedTransactions, stampTransaction, isTransactionConsistent, awaitPendingTransaction, txRetry, effectify, satisfiesSuccessType2, satisfiesErrorType2, satisfiesServicesType2, mapEager2, mapErrorEager2, mapBothEager2, flatMapEager2, catchEager2, fnUntracedEager2;
+var TypeId15, isEffect2, all4, partition4, reduce4, validate2, findFirst5, findFirstFilter2, forEach3, head3, whileLoop2, promise2, tryPromise2, succeed6, succeedNone2, succeedSome2, suspend3, sync3, void_4, undefined_2, callback2, never2, Do4, bindTo5, let_5, bind5, gen3, fail6, failSync2, failCause3, failCauseSync2, die3, try_3, yieldNow2, yieldNowWith2, withFiber2, withFiberSucceed2, fromResult2, fromOption5, transposeOption2, fromNullishOr4, flatMap6, flatten5, andThen3, tap5, result2, option2, exit2, map8, as3, asSome2, asVoid3, flip3, zip3, zipWith4, catch_3, catchTag3, catchTags2, catchReason2, catchReasons2, unwrapReason2, catchCause3, catchDefect2, catchIf2, catchFilter2, catchNoSuchElement2, catchCauseIf2, catchCauseFilter2, mapError3, mapBoth2, orDie3, tapError3, tapErrorTag2, tapCause3, tapCauseIf2, tapCauseFilter2, tapDefect2, eventually2, retry2, retryOrElse2, sandbox2, ignore2, ignoreCause2, withExecutionPlan2, withErrorReporting2, orElseSucceed2, firstSuccessOf2, timeout2, timeoutOption2, timeoutOrElse2, delay2, sleep2, timed2, raceAll2, raceAllFirst2, race2, raceFirst2, filter6, filterMap5, filterMapEffect2, filterOrElse2, filterMapOrElse2, filterOrFail2, filterMapOrFail2, when2, match6, matchEager2, matchCause2, matchCauseEager2, matchCauseEffectEager2, matchCauseEffect2, matchEffect3, isFailure5, isSuccess5, context2, contextWith2, provide4, provideContext2, setContext2, service2, serviceOption2, updateContext2, updateService3, updateServiceScoped2, provideService2, provideServiceEffect2, scope2, scoped2, scopedWith2, acquireRelease2, acquireDisposable2, acquireUseRelease2, addFinalizer3, ensuring2, onError2, onErrorIf2, onErrorFilter2, onExitPrimitive2, onExit2, onExitIf2, onExitFilter2, cached2, cachedWithTTL2, cachedInvalidateWithTTL2, interrupt3, interruptible2, onInterrupt2, uninterruptible2, uninterruptibleMask2, interruptibleMask2, abortSignal2, forever3, repeat2, repeatOrElse2, replicate3, replicateEffect2, schedule, scheduleFrom2, tracer2, withTracer2, withTracerEnabled2, withTracerTiming2, annotateSpans2, annotateCurrentSpan2, currentSpan2, currentParentSpan2, spanAnnotations2, spanLinks2, linkSpans2, makeSpan2, makeSpanScoped2, useSpan2, withSpan3, withSpanScoped2, withParentSpan3, request2, requestUnsafe2, forkChild2, forkIn2, forkScoped2, forkDetach2, awaitAllChildren2, fiber2, fiberId2, runFork2, runForkWith2, runCallbackWith2, runCallback2, runPromise2, runPromiseWith2, runPromiseExit2, runPromiseExitWith2, runSync2, runSyncWith2, runSyncExit2, runSyncExitWith2, fnUntraced2, fn2, clockWith3, logWithLevel2, log, logFatal, logWarning, logError, logInfo, logDebug, logTrace, withLogger, annotateLogs, annotateLogsScoped2, withLogSpan, track, trackSuccesses, trackErrors, trackDefects, trackDuration, Transaction, tx, completedTransactions, stampTransaction, isTransactionConsistent, awaitPendingTransaction, txRetry, effectify, satisfiesSuccessType2, satisfiesErrorType2, satisfiesServicesType2, mapEager2, mapErrorEager2, mapBothEager2, flatMapEager2, catchEager2, fnUntracedEager2;
 var init_Effect = __esm({
   "node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/Effect.js"() {
     init_Context();
@@ -11076,7 +11090,7 @@ var init_Effect = __esm({
     runSyncExitWith2 = runSyncExitWith;
     fnUntraced2 = fnUntraced;
     fn2 = fn;
-    clockWith2 = clockWith;
+    clockWith3 = clockWith;
     logWithLevel2 = logWithLevel;
     log = /* @__PURE__ */ logWithLevel();
     logFatal = /* @__PURE__ */ logWithLevel("Fatal");
@@ -11121,7 +11135,7 @@ var init_Effect = __esm({
       const input = f === void 0 ? defect : f(defect);
       return update(metric, input);
     }));
-    trackDuration = /* @__PURE__ */ dual((args2) => isEffect2(args2[0]), (self, metric, f) => clockWith2((clock) => {
+    trackDuration = /* @__PURE__ */ dual((args2) => isEffect2(args2[0]), (self, metric, f) => clockWith3((clock) => {
       const startTime = clock.monotonicTimeNanosUnsafe();
       return onExit2(self, () => {
         const endTime = clock.monotonicTimeNanosUnsafe();
@@ -32003,7 +32017,7 @@ var requestOrigin = (request3) => match(toUrl(request3), {
   onNone: () => request3.url,
   onSome: (url) => url.origin
 });
-var circuitBreakerClassifier = (exit3) => clockWith2((clock) => succeed6(classifyCircuitBreakerExit(exit3, clock.currentTimeMillisUnsafe())));
+var circuitBreakerClassifier = (exit3) => clockWith3((clock) => succeed6(classifyCircuitBreakerExit(exit3, clock.currentTimeMillisUnsafe())));
 var classifyCircuitBreakerExit = (exit3, nowMillis) => {
   if (isSuccess4(exit3)) {
     const outcome = circuitBreakerStatusOutcome(exit3.value.status);
@@ -34268,6 +34282,39 @@ var ProviderName = Schema_exports.String.check(
 ).annotate({
   description: "Name of the Dokploy vault provider that reads `secrets.folder` in this environment. Default: `infisical-<project>`, plus `-<environment>` outside production (slugs of the Dokploy names), as babel names it at onboarding."
 });
+var InfisicalSecrets = Schema_exports.Struct({ provider: ProviderName });
+var openBaoPathSegment = "[A-Za-z0-9_-][A-Za-z0-9_.-]*";
+var openBaoField = "[A-Za-z0-9_.-]+";
+var openBaoReference = `${openBaoPathSegment}(?:/${openBaoPathSegment})*:${openBaoField}`;
+var openBaoLiteral = String.raw`[^\x00-\x1F\x7F-\x9F\x22\x27\x60$\\]`;
+var openBaoPart = String.raw`(?:${openBaoLiteral}|\$\{${openBaoReference}\})`;
+var OpenBaoValue = Schema_exports.String.check(
+  Schema_exports.isPattern(
+    new RegExp(
+      String.raw`^(?:${openBaoReference}|${openBaoPart}*\$\{${openBaoReference}\}${openBaoPart}*)$`,
+      "u"
+    ),
+    {
+      message: "an OpenBao value is a reference `<path>:<field>` (path relative to the mount, e.g. prod/postgres:password), or a text holding at least one `${<path>:<field>}` and no quote, backtick, `$` outside a reference, backslash or control character"
+    }
+  )
+).annotate({
+  description: "A reference `<path>:<field>`, the path relative to the provider's mount (e.g. `prod/postgres:password`), or a composed value holding `${<path>:<field>}` references (e.g. `postgres://app:${prod/postgres:password}@db:5432/app`)."
+});
+var EnvKey = Schema_exports.String.check(
+  Schema_exports.isPattern(/^[A-Za-z_][A-Za-z0-9_.-]*$/u, {
+    message: "an environment key is letters, digits, `_`, `.` and `-`, starting with a letter or `_`"
+  })
+);
+var OpenBaoEnv = Schema_exports.Record(EnvKey, OpenBaoValue).check(Schema_exports.isMinProperties(1)).annotate({
+  description: "Environment keys of the compose, each mapped to the value Dokploy resolves from this provider at deploy time."
+});
+var OpenBaoSecrets = Schema_exports.Struct({
+  openbao: Schema_exports.Record(ProviderName, OpenBaoEnv).check(Schema_exports.isMinProperties(1)).annotate({
+    description: 'OpenBao (Dokploy "HashiCorp Vault / OpenBao") providers of this environment, e.g. `<app>-prod` and `shared-prod`, each with its explicit env key \u2192 reference mapping.'
+  })
+});
+var EnvironmentSecrets = Schema_exports.Union([InfisicalSecrets, OpenBaoSecrets]);
 var SecretsFolder = Schema_exports.String.check(
   Schema_exports.isPattern(/^(?:\/[A-Za-z0-9_-]+)+$/u, {
     message: "a secrets folder is an absolute Infisical path such as /my-project, made of letters, digits, dashes and underscores"
@@ -34344,7 +34391,7 @@ var ManifestEnvironment = Schema_exports.Struct({
     environment: DokployName,
     compose: DokployName
   }),
-  secrets: Schema_exports.optionalKey(Schema_exports.Struct({ provider: ProviderName })),
+  secrets: Schema_exports.optionalKey(EnvironmentSecrets),
   domain: ParentDomain
 });
 var Manifest = Schema_exports.Struct({
@@ -34353,7 +34400,7 @@ var Manifest = Schema_exports.Struct({
     default: defaultComposePath,
     description: "Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys."
   }).pipe(Schema_exports.withDecodingDefaultKey(Effect_exports.succeed(defaultComposePath))),
-  secrets: Schema_exports.Struct({ folder: SecretsFolder }),
+  secrets: Schema_exports.optionalKey(Schema_exports.Struct({ folder: SecretsFolder })),
   environments: Schema_exports.Record(EnvironmentName, ManifestEnvironment).check(
     Schema_exports.isMinProperties(1)
   ),
@@ -34361,7 +34408,15 @@ var Manifest = Schema_exports.Struct({
 }).annotate({
   title: "dokploy-deploy manifest",
   description: "Deployment manifest of an application deployed by coremantle/dokploy-deploy."
-});
+}).check(
+  Schema_exports.makeFilter(({ secrets, environments }) => {
+    const infisical = Object.entries(environments).filter(([, environment]) => !isOpenBao(environment)).map(([name]) => name);
+    return secrets !== void 0 || infisical.length === 0 ? true : `environment(s) ${infisical.join(", ")} read Infisical (no \`secrets.openbao\`), which needs the top-level \`secrets.folder\``;
+  })
+);
+function isOpenBao(environment) {
+  return environment.secrets !== void 0 && "openbao" in environment.secrets;
+}
 var manifestParseOptions = {
   onExcessProperty: "error",
   errors: "all"
@@ -34383,6 +34438,8 @@ var inputVariables = {
   commit: "DOKPLOY_DEPLOY_COMMIT",
   deployTimeout: "DOKPLOY_DEPLOY_DEPLOY_TIMEOUT",
   versionEnv: "DOKPLOY_DEPLOY_VERSION_ENV",
+  openbaoUrl: "DOKPLOY_DEPLOY_OPENBAO_URL",
+  openbaoToken: "DOKPLOY_DEPLOY_OPENBAO_TOKEN",
   outputFile: "GITHUB_OUTPUT"
 };
 var defaultDeployTimeoutSeconds = 1800;
@@ -34401,6 +34458,11 @@ var EnvironmentName2 = Schema_exports.Trim.check(isEnvironmentName);
 var HttpsUrl = Schema_exports.URLFromString.check(
   Schema_exports.makeFilter((url) => url.protocol === "https:", {
     message: "the Dokploy API is only called over https"
+  })
+);
+var OpenBaoUrl = Schema_exports.URLFromString.check(
+  Schema_exports.makeFilter((url) => url.protocol === "https:", {
+    message: "openbao-url is an https URL: the token is only sent over https"
   })
 );
 var ForgeToken = Schema_exports.Trim.check(
@@ -34449,6 +34511,21 @@ function optionalInput({
     Config_exports.orElse(() => Config_exports.option(Config_exports.schema(schema2, name)))
   );
 }
+function openBaoAccess() {
+  return optionalInput({
+    schema: Schema_exports.RedactedFromValue(ForgeToken),
+    name: inputVariables.openbaoToken
+  }).pipe(
+    Config_exports.flatMap(
+      Option_exports.match({
+        onNone: () => Config_exports.succeed(Option_exports.none()),
+        onSome: (token) => Config_exports.schema(OpenBaoUrl, inputVariables.openbaoUrl).pipe(
+          Config_exports.map((url) => Option_exports.some({ url, token }))
+        )
+      })
+    )
+  );
+}
 var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokploy-deploy/ActionInputs") {
   static layer = Layer_exports.effect(
     _ActionInputs,
@@ -34491,6 +34568,7 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
         schema: VersionVariable,
         name: inputVariables.versionEnv
       }),
+      openbao: openBaoAccess(),
       outputFile: optionalInput({
         schema: OutputFile,
         name: inputVariables.outputFile
@@ -34528,6 +34606,7 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
     commit: Option_exports.some(testCommit),
     deployTimeout: Duration_exports.seconds(defaultDeployTimeoutSeconds),
     versionEnv: Option_exports.none(),
+    openbao: Option_exports.none(),
     outputFile: Option_exports.none(),
     ...shape
   });
@@ -34589,7 +34668,9 @@ var VaultProvider = Schema_exports.Struct({
   name: Schema_exports.String,
   providerType: Schema_exports.String,
   config: Schema_exports.Struct({
-    secretPath: Schema_exports.optionalKey(Schema_exports.NullOr(Schema_exports.String))
+    secretPath: Schema_exports.optionalKey(Schema_exports.NullOr(Schema_exports.String)),
+    mount: Schema_exports.optionalKey(Schema_exports.NullOr(Schema_exports.String)),
+    namespace: Schema_exports.optionalKey(Schema_exports.NullOr(Schema_exports.String))
   })
 });
 var DokployComposeEnv = Schema_exports.Struct({
@@ -35993,6 +36074,39 @@ function findVaultProvider({
     })
   );
 }
+function findOpenBaoProvider({
+  providers,
+  name
+}) {
+  return pipe(
+    Array_exports.findFirst(providers, (provider) => provider.name === name),
+    Effect_exports.fromOption(
+      () => VaultProviderError.because({
+        provider: name,
+        reason: "is not visible to the API key: check its name and its assignment to the project"
+      })
+    ),
+    Effect_exports.filterOrFail(
+      ({ providerType }) => providerType === "hashicorp",
+      ({ providerType }) => VaultProviderError.because({
+        provider: name,
+        reason: `is a ${providerType} provider; \`secrets.openbao\` needs a HashiCorp Vault / OpenBao provider`
+      })
+    ),
+    Effect_exports.map(({ vaultProviderId, config }) => ({
+      vaultProviderId,
+      name,
+      mount: (config.mount ?? "secret").replaceAll(/^\/+|\/+$/gu, ""),
+      namespace: Option_exports.filter(
+        Option_exports.fromNullishOr(config.namespace),
+        (namespace) => namespace !== ""
+      )
+    })),
+    Effect_exports.withSpan("DokployTarget.findOpenBaoProvider", {
+      attributes: { provider: name }
+    })
+  );
+}
 
 // src/env/env-references.ts
 var dotenvKey = /^[A-Za-z0-9_.-]+$/u;
@@ -36280,6 +36394,388 @@ function diffEnv({
     )
   };
 }
+
+// src/env/openbao-references.ts
+var sharedMount = "shared";
+var dokployListingLimit = 200;
+var wholeReference = new RegExp(`^(${openBaoReference})$`, "u");
+var embeddedReference = new RegExp(
+  String.raw`\$\{(${openBaoReference})\}`,
+  "u"
+);
+var DuplicateSecretKeyError = class _DuplicateSecretKeyError extends Schema_exports.TaggedError()(
+  "DuplicateSecretKeyError",
+  { keys: Schema_exports.Array(Schema_exports.String), message: Schema_exports.String }
+) {
+  static forKeys(keys3) {
+    return new _DuplicateSecretKeyError({
+      keys: keys3,
+      message: `environment key(s) ${keys3.join(", ")} are mapped by several OpenBao providers of the manifest: map each key once`
+    });
+  }
+};
+var MountGuardError = class _MountGuardError extends Schema_exports.TaggedError()(
+  "MountGuardError",
+  {
+    provider: Schema_exports.String,
+    mount: Schema_exports.String,
+    project: Schema_exports.String,
+    message: Schema_exports.String
+  }
+) {
+  static outside({
+    provider,
+    mount,
+    project
+  }) {
+    return new _MountGuardError({
+      provider,
+      mount,
+      project,
+      message: `vault provider ${provider} reads the OpenBao mount ${mount}, outside ${allowedMounts(project).join(" and ")}, the only mounts the references of Dokploy project ${project} may point to`
+    });
+  }
+};
+var MissingSecretReferencesError = class _MissingSecretReferencesError extends Schema_exports.TaggedError()(
+  "MissingSecretReferencesError",
+  {
+    provider: Schema_exports.String,
+    references: Schema_exports.Array(Schema_exports.String),
+    message: Schema_exports.String
+  }
+) {
+  static forReferences({
+    provider,
+    references,
+    listed
+  }) {
+    const hint = listed === 0 ? `; it lists nothing at all: check that its token may list the mount's metadata` : "";
+    return new _MissingSecretReferencesError({
+      provider,
+      references,
+      message: `vault provider ${provider} lists no ${references.join(", ")} (path:field, relative to its mount): the Dokploy deploy would fail${hint}`
+    });
+  }
+};
+var VersionKeyMappedError = class _VersionKeyMappedError extends Schema_exports.TaggedError()(
+  "VersionKeyMappedError",
+  { key: Schema_exports.String, message: Schema_exports.String }
+) {
+  static forKey(key5) {
+    return new _VersionKeyMappedError({
+      key: key5,
+      message: `version-env ${key5} is also a key of the manifest's OpenBao mapping: the action writes ${key5} itself, so rename the key or pick another version-env`
+    });
+  }
+};
+function referenceName({
+  path,
+  field
+}) {
+  return `${path}:${field}`;
+}
+function splitReference(reference) {
+  const separator = reference.lastIndexOf(":");
+  return {
+    path: reference.slice(0, separator),
+    field: reference.slice(separator + 1)
+  };
+}
+function parseOpenBaoValue(value5) {
+  return wholeReference.test(value5) ? [{ kind: "reference", ...splitReference(value5) }] : pipe(
+    value5.split(embeddedReference),
+    Array_exports.flatMap((text2, index2) => {
+      if (index2 % 2 === 1) {
+        return [{ kind: "reference", ...splitReference(text2) }];
+      }
+      return text2 === "" ? [] : [{ text: text2, kind: "literal" }];
+    })
+  );
+}
+function openBaoEntries({ openbao }) {
+  const entries3 = pipe(
+    Record_exports.toEntries(openbao),
+    Array_exports.flatMap(
+      ([provider, env]) => Array_exports.map(Record_exports.toEntries(env), ([key5, value5]) => ({
+        key: key5,
+        provider,
+        parts: parseOpenBaoValue(value5)
+      }))
+    ),
+    Array_exports.sort(Order_exports.mapInput(Order_exports.String, ({ key: key5 }) => key5))
+  );
+  const keys3 = Array_exports.map(entries3, ({ key: key5 }) => key5);
+  const duplicates = pipe(
+    keys3,
+    Array_exports.filter((key5, index2) => keys3.indexOf(key5) !== index2),
+    Array_exports.dedupe
+  );
+  return pipe(
+    Array_exports.isReadonlyArrayEmpty(duplicates) ? Effect_exports.succeed(entries3) : Effect_exports.fail(DuplicateSecretKeyError.forKeys(duplicates)),
+    Effect_exports.withSpan("OpenBaoReferences.entries")
+  );
+}
+function referencesOf(entries3) {
+  return pipe(
+    entries3,
+    Array_exports.flatMap(
+      ({ provider, parts: parts2 }) => Array_exports.flatMap(
+        parts2,
+        (part) => part.kind === "reference" ? [{ provider, path: part.path, field: part.field }] : []
+      )
+    ),
+    Array_exports.dedupeWith(
+      (left, right) => left.provider === right.provider && left.path === right.path && left.field === right.field
+    )
+  );
+}
+function allowedMounts(project) {
+  const slug = dokploySlug(project);
+  return slug === "" ? [sharedMount] : [slug, sharedMount];
+}
+function guardMount({
+  provider,
+  mount,
+  project
+}) {
+  return pipe(
+    Array_exports.contains(allowedMounts(project), mount) ? Effect_exports.void : Effect_exports.fail(MountGuardError.outside({ provider, mount, project })),
+    Effect_exports.withSpan("OpenBaoReferences.guardMount", {
+      attributes: { provider, mount }
+    })
+  );
+}
+function checkListedReferences({
+  provider,
+  references,
+  listed
+}) {
+  const missing2 = pipe(
+    references,
+    Array_exports.filter((reference) => reference.provider === provider),
+    Array_exports.map(referenceName),
+    Array_exports.filter((name) => !Array_exports.contains(listed, name))
+  );
+  const truncated = listed.length >= dokployListingLimit;
+  return pipe(
+    Array_exports.isReadonlyArrayEmpty(missing2) || truncated ? Effect_exports.succeed(
+      truncated ? Array_exports.map(missing2, (name) => `${provider}:${name}`) : []
+    ) : Effect_exports.fail(
+      MissingSecretReferencesError.forReferences({
+        provider,
+        references: missing2,
+        listed: listed.length
+      })
+    ),
+    Effect_exports.withSpan("OpenBaoReferences.checkListedReferences", {
+      attributes: { provider, listed: listed.length }
+    })
+  );
+}
+function vaultReference({ provider, path, field }) {
+  return `\${{vault.${provider}.${path}:${field}}}`;
+}
+function entryLine({ key: key5, provider, parts: parts2 }) {
+  const value5 = Array_exports.map(
+    parts2,
+    (part) => part.kind === "literal" ? part.text : vaultReference({ provider, path: part.path, field: part.field })
+  ).join("");
+  return `${key5}='${value5}'
+`;
+}
+function renderOpenBaoEnvironment({
+  entries: entries3,
+  version = Option_exports.none()
+}) {
+  const collision = Option_exports.filter(
+    version,
+    ({ key: key5 }) => Array_exports.some(entries3, (entry) => entry.key === key5)
+  );
+  const checked = Option_exports.match(
+    collision,
+    {
+      onNone: () => Effect_exports.void,
+      onSome: ({ key: key5 }) => Effect_exports.fail(VersionKeyMappedError.forKey(key5))
+    }
+  );
+  return pipe(
+    checked,
+    Effect_exports.map(
+      () => [
+        ...Array_exports.map(entries3, entryLine),
+        ...Option_exports.toArray(Option_exports.map(version, versionLine))
+      ].join("")
+    ),
+    Effect_exports.withSpan("OpenBaoReferences.renderEnvironment", {
+      attributes: { keys: entries3.length }
+    })
+  );
+}
+
+// src/openbao/openbao-metadata.ts
+var requestTimeoutSeconds2 = 30;
+var SecretMetadata = Schema_exports.Struct({
+  data: Schema_exports.Struct({
+    current_version: Schema_exports.Int,
+    versions: Schema_exports.Record(
+      Schema_exports.String,
+      Schema_exports.Struct({
+        deletion_time: Schema_exports.String,
+        destroyed: Schema_exports.Boolean
+      })
+    )
+  })
+});
+function secretLocation({ mount, path }) {
+  return `${mount}/${path}`;
+}
+var OpenBaoRequestError = class _OpenBaoRequestError extends Schema_exports.TaggedError()(
+  "OpenBaoRequestError",
+  {
+    secret: Schema_exports.String,
+    status: Schema_exports.optionalKey(Schema_exports.Int),
+    message: Schema_exports.String
+  }
+) {
+  static fromStatus({
+    secret,
+    status
+  }) {
+    const reason = status === 403 ? "the openbao-token may not read its metadata (or is invalid or expired)" : "unexpected answer";
+    return new _OpenBaoRequestError({
+      secret,
+      status,
+      message: `OpenBao answered ${status} on the metadata of ${secret}: ${reason}`
+    });
+  }
+  static because({
+    secret,
+    reason
+  }) {
+    return new _OpenBaoRequestError({
+      secret,
+      message: `OpenBao metadata of ${secret}: ${reason}`
+    });
+  }
+};
+function encodePath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+function stateOf({ data }, now2) {
+  const current = data.versions[String(data.current_version)];
+  if (current === void 0) return "missing";
+  if (current.destroyed) return "destroyed";
+  const deletedAt = Date.parse(current.deletion_time);
+  return current.deletion_time === "" || !(deletedAt <= now2) ? "live" : "deleted";
+}
+var HttpOpenBaoMetadata = class _HttpOpenBaoMetadata {
+  enabled = true;
+  dependencies;
+  constructor(dependencies) {
+    this.dependencies = dependencies;
+  }
+  static make(dependencies) {
+    return new _HttpOpenBaoMetadata(dependencies);
+  }
+  secretState(secret) {
+    const location2 = secretLocation(secret);
+    const { access: access3, httpClient } = this.dependencies;
+    const request3 = pipe(
+      HttpClientRequest_exports.get(
+        `${access3.url.href.replace(/\/+$/u, "")}/v1/${encodePath(secret.mount)}/metadata/${encodePath(secret.path)}`
+      ),
+      HttpClientRequest_exports.acceptJson,
+      HttpClientRequest_exports.setHeader(
+        "x-vault-token",
+        Redacted_exports.value(access3.token)
+      ),
+      (bare) => Option_exports.match(secret.namespace, {
+        onNone: () => bare,
+        onSome: (namespace) => HttpClientRequest_exports.setHeader(bare, "x-vault-namespace", namespace)
+      })
+    );
+    return pipe(
+      httpClient.execute(request3),
+      // Why: fetch follows redirects by default and would re-send the token to the target; a 3xx must fail like any other non-2xx answer.
+      Effect_exports.provideService(FetchHttpClient_exports.RequestInit, {
+        redirect: "manual"
+      }),
+      Effect_exports.mapError(
+        (cause) => OpenBaoRequestError.because({
+          secret: location2,
+          reason: `OpenBao could not be reached: ${cause.message}`
+        })
+      ),
+      Effect_exports.flatMap((response) => this.stateFrom({ location: location2, response })),
+      Effect_exports.timeoutOrElse({
+        duration: `${requestTimeoutSeconds2} seconds`,
+        orElse: () => Effect_exports.fail(
+          OpenBaoRequestError.because({
+            secret: location2,
+            reason: `OpenBao did not answer within ${requestTimeoutSeconds2} seconds`
+          })
+        )
+      }),
+      Effect_exports.withSpan("OpenBaoMetadata.secretState", {
+        attributes: { secret: location2 }
+      })
+    );
+  }
+  stateFrom({
+    location: location2,
+    response
+  }) {
+    if (response.status === 404) return Effect_exports.succeed("missing");
+    return pipe(
+      response.status === 200 ? pipe(
+        response.json,
+        Effect_exports.flatMap(
+          (body) => Schema_exports.decodeUnknownEffect(SecretMetadata)(body)
+        ),
+        Effect_exports.zipWith(Clock_exports.currentTimeMillis, stateOf),
+        Effect_exports.mapError(
+          (cause) => OpenBaoRequestError.because({
+            secret: location2,
+            reason: `unexpected body (is openbao-url the root of an OpenBao server?): ${cause.message}`
+          })
+        )
+      ) : Effect_exports.fail(
+        OpenBaoRequestError.fromStatus({
+          secret: location2,
+          status: response.status
+        })
+      ),
+      Effect_exports.withSpan("OpenBaoMetadata.stateFrom", {
+        attributes: { secret: location2, status: response.status }
+      })
+    );
+  }
+};
+var disabled = {
+  enabled: false,
+  secretState: () => Effect_exports.succeed("live")
+};
+var OpenBaoMetadata = class _OpenBaoMetadata extends Context_exports.Service()("dokploy-deploy/OpenBaoMetadata") {
+  static layer = Layer_exports.effect(
+    _OpenBaoMetadata,
+    Effect_exports.map(
+      effect_service_exports.all({
+        httpClient: HttpClient_exports.HttpClient,
+        inputs: ActionInputs
+      }),
+      ({ httpClient, inputs }) => Option_exports.match(inputs.openbao, {
+        onNone: () => disabled,
+        onSome: (access3) => HttpOpenBaoMetadata.make({ httpClient, access: access3 })
+      })
+    )
+  );
+  static buildTestService = (shape = {}) => _OpenBaoMetadata.of({ ...disabled, ...shape });
+  static testLayer = Layer_exports.succeed(
+    _OpenBaoMetadata,
+    _OpenBaoMetadata.buildTestService()
+  );
+  static buildTestLayer = (shape) => Layer_exports.succeed(_OpenBaoMetadata, _OpenBaoMetadata.buildTestService(shape));
+};
 
 // node_modules/.pnpm/effect@4.1.4/node_modules/effect/dist/encoding/Yaml.js
 var hasOwn = Object.prototype.hasOwnProperty;
@@ -37143,6 +37639,21 @@ var UnknownEnvironmentError = class _UnknownEnvironmentError extends Schema_expo
     });
   }
 };
+var OpenBaoSecretStateError = class _OpenBaoSecretStateError extends Schema_exports.TaggedError()(
+  "OpenBaoSecretStateError",
+  { secrets: Schema_exports.Array(Schema_exports.String), message: Schema_exports.String }
+) {
+  static forSecrets(secrets) {
+    const lines = Array_exports.map(
+      secrets,
+      ({ location: location2, state }) => `${location2} (${state})`
+    );
+    return new _OpenBaoSecretStateError({
+      secrets: lines,
+      message: `OpenBao holds no live version of ${lines.join(", ")}: the Dokploy deploy would fail`
+    });
+  }
+};
 function selectEnvironment({
   manifest,
   version,
@@ -37166,8 +37677,57 @@ function selectEnvironment({
     })
   );
 }
-function providerOf({ dokploy, secrets }) {
-  return secrets?.provider ?? defaultProviderName(dokploy);
+function infisicalProviderOf({
+  dokploy,
+  secrets
+}) {
+  return secrets !== void 0 && "provider" in secrets ? secrets.provider : defaultProviderName(dokploy);
+}
+function infisicalSourceOf({
+  manifest,
+  environment
+}) {
+  return pipe(
+    Option_exports.fromUndefinedOr(manifest.secrets),
+    // Defect: the manifest schema refuses an Infisical environment without the top-level secrets.folder.
+    Effect_exports.fromOption(() => "an Infisical environment needs secrets.folder"),
+    Effect_exports.orDie,
+    Effect_exports.map(({ folder }) => ({
+      folder,
+      kind: "infisical",
+      provider: infisicalProviderOf(environment)
+    })),
+    Effect_exports.withSpan("DeploymentPlanner.infisicalSource")
+  );
+}
+function secretSourceOf(selected) {
+  const { environment } = selected;
+  const source = isOpenBao(environment) ? Effect_exports.succeed({ kind: "openbao", secrets: environment.secrets }) : infisicalSourceOf(selected);
+  return pipe(source, Effect_exports.withSpan("DeploymentPlanner.secretSource"));
+}
+function guardSource({
+  source,
+  project
+}) {
+  return pipe(
+    source.kind === "infisical" ? guardFolder({ project, folder: source.folder }) : Effect_exports.void,
+    Effect_exports.withSpan("DeploymentPlanner.guardSource", {
+      attributes: { kind: source.kind }
+    })
+  );
+}
+function resolveOpenBaoProvider({
+  providers,
+  name,
+  project
+}) {
+  return pipe(
+    findOpenBaoProvider({ providers, name }),
+    Effect_exports.tap(({ mount }) => guardMount({ mount, project, provider: name })),
+    Effect_exports.withSpan("DeploymentPlanner.resolveOpenBaoProvider", {
+      attributes: { provider: name }
+    })
+  );
 }
 var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   plan;
@@ -37193,13 +37753,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
       Effect_exports.flatMap(
         ({ manifest, version }) => selectEnvironment({ manifest, version, name: inputs.environment })
       ),
-      Effect_exports.tap(
-        ({ manifest, environment }) => guardFolder({
-          folder: manifest.secrets.folder,
-          project: environment.dokploy.project
-        })
-      ),
-      Effect_exports.flatMap((selected) => this.planEnvironment(selected)),
+      Effect_exports.flatMap((selected) => this.planSelected(selected)),
       Effect_exports.withSpan("DeploymentPlanner.plan", {
         attributes: {
           manifest: inputs.manifest,
@@ -37208,10 +37762,21 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
       })
     );
   }
+  planSelected(selected) {
+    return pipe(
+      secretSourceOf(selected),
+      Effect_exports.tap(
+        (source) => guardSource({ source, project: selected.environment.dokploy.project })
+      ),
+      Effect_exports.flatMap((source) => this.planEnvironment({ ...selected, source })),
+      Effect_exports.withSpan("DeploymentPlanner.planSelected")
+    );
+  }
   planEnvironment({
     manifest,
     environment,
-    version
+    version,
+    source
   }) {
     const { workspaceFiles } = this.dependencies;
     return pipe(
@@ -37229,7 +37794,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
         })
       ),
       Effect_exports.flatMap(
-        (resolved) => this.planKeys({ manifest, environment, version, ...resolved })
+        (resolved) => this.planKeys({ manifest, environment, version, source, ...resolved })
       ),
       Effect_exports.withSpan("DeploymentPlanner.planEnvironment")
     );
@@ -37237,16 +37802,187 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   planKeys(context3) {
     const { manifest, compose: compose4 } = context3;
     return pipe(
-      this.listKeys(context3),
-      Effect_exports.flatMap((keys3) => this.renderPlan({ ...context3, keys: keys3 })),
+      this.renderSecrets(context3),
       Effect_exports.tap(
-        ({ keys: keys3, version }) => checkComposeVariables({
-          keys: [...keys3, ...Option_exports.toArray(version).map(({ key: key5 }) => key5)],
+        ({ keys: keys3 }) => checkComposeVariables({
+          keys: [
+            ...keys3,
+            ...Option_exports.toArray(context3.version).map(({ key: key5 }) => key5)
+          ],
           compose: manifest.composeFile,
           requiredVariables: compose4.requiredVariables
         })
       ),
+      Effect_exports.flatMap((rendered) => this.renderPlan({ ...context3, rendered })),
       Effect_exports.withSpan("DeploymentPlanner.planKeys")
+    );
+  }
+  renderSecrets(context3) {
+    const { source } = context3;
+    const rendered = source.kind === "infisical" ? this.renderInfisical({ ...context3, source }) : this.renderOpenBao({ ...context3, secrets: source.secrets });
+    return pipe(
+      rendered,
+      Effect_exports.withSpan("DeploymentPlanner.renderSecrets", {
+        attributes: { kind: source.kind }
+      })
+    );
+  }
+  renderInfisical({
+    source,
+    target,
+    version
+  }) {
+    return pipe(
+      this.listKeys({ source, target }),
+      Effect_exports.flatMap(
+        (keys3) => Effect_exports.all({
+          keys: Effect_exports.succeed(keys3),
+          env: renderEnvironment({ ...source, keys: keys3, version })
+        })
+      ),
+      Effect_exports.map(({ keys: keys3, env }) => ({
+        keys: keys3,
+        env,
+        secrets: {
+          kind: "infisical",
+          provider: source.provider,
+          folder: source.folder
+        },
+        unverifiedReferences: []
+      })),
+      Effect_exports.withSpan("DeploymentPlanner.renderInfisical")
+    );
+  }
+  renderOpenBao(context3) {
+    return pipe(
+      openBaoEntries(context3.secrets),
+      Effect_exports.flatMap(
+        (entries3) => Effect_exports.all({
+          entries: Effect_exports.succeed(entries3),
+          checked: this.checkOpenBao({ ...context3, entries: entries3 }),
+          env: renderOpenBaoEnvironment({ entries: entries3, version: context3.version })
+        })
+      ),
+      Effect_exports.map(({ entries: entries3, checked, env }) => ({
+        env,
+        secrets: {
+          kind: "openbao",
+          providers: checked.providers,
+          metadataChecked: this.dependencies.openbao.enabled
+        },
+        keys: Array_exports.map(entries3, ({ key: key5 }) => key5),
+        unverifiedReferences: checked.unverified
+      })),
+      Effect_exports.withSpan("DeploymentPlanner.renderOpenBao")
+    );
+  }
+  checkOpenBao({
+    environment,
+    target,
+    entries: entries3
+  }) {
+    const { dokploy } = this.dependencies;
+    const references = referencesOf(entries3);
+    const names = pipe(
+      entries3,
+      Array_exports.map(({ provider }) => provider),
+      Array_exports.dedupe,
+      Array_exports.sort(Order_exports.String)
+    );
+    return pipe(
+      dokploy.vaultProviders,
+      Effect_exports.flatMap(
+        (providers) => Effect_exports.forEach(
+          names,
+          (name) => resolveOpenBaoProvider({
+            providers,
+            name,
+            project: environment.dokploy.project
+          })
+        )
+      ),
+      Effect_exports.flatMap(
+        Effect_exports.forEach(
+          (provider) => this.listedReferences({ provider, references, target })
+        )
+      ),
+      Effect_exports.tap(
+        (checked) => this.checkMetadata({
+          references,
+          providers: Array_exports.map(checked, ({ provider }) => provider)
+        })
+      ),
+      Effect_exports.map((checked) => ({
+        providers: Array_exports.map(checked, ({ provider }) => ({
+          name: provider.name,
+          mount: provider.mount,
+          references: pipe(
+            references,
+            Array_exports.filter((reference) => reference.provider === provider.name),
+            Array_exports.map(referenceName),
+            Array_exports.sort(Order_exports.String)
+          )
+        })),
+        unverified: Array_exports.flatMap(checked, ({ unverified }) => unverified)
+      })),
+      Effect_exports.withSpan("DeploymentPlanner.checkOpenBao")
+    );
+  }
+  listedReferences({
+    provider,
+    references,
+    target
+  }) {
+    return pipe(
+      this.dependencies.dokploy.listSecretNames({
+        vaultProviderId: provider.vaultProviderId,
+        projectId: target.projectId,
+        environmentId: target.environmentId
+      }),
+      Effect_exports.flatMap(
+        (listed) => checkListedReferences({ references, listed, provider: provider.name })
+      ),
+      Effect_exports.map((unverified) => ({ provider, unverified })),
+      Effect_exports.withSpan("DeploymentPlanner.listedReferences", {
+        attributes: { provider: provider.name }
+      })
+    );
+  }
+  checkMetadata({
+    references,
+    providers
+  }) {
+    const { openbao } = this.dependencies;
+    const secrets = pipe(
+      providers,
+      Array_exports.flatMap(
+        ({ name, mount, namespace }) => pipe(
+          references,
+          Array_exports.filter(({ provider }) => provider === name),
+          Array_exports.map(({ path }) => path),
+          Array_exports.dedupe,
+          Array_exports.map((path) => ({ mount, namespace, path }))
+        )
+      )
+    );
+    return pipe(
+      openbao.enabled ? pipe(
+        Effect_exports.forEach(
+          secrets,
+          (secret) => Effect_exports.map(openbao.secretState(secret), (state) => ({
+            state,
+            location: secretLocation(secret)
+          })),
+          { concurrency: 4 }
+        ),
+        Effect_exports.map(Array_exports.filter(({ state }) => state !== "live")),
+        Effect_exports.flatMap(
+          (notLive) => Array_exports.isReadonlyArrayEmpty(notLive) ? Effect_exports.void : Effect_exports.fail(OpenBaoSecretStateError.forSecrets(notLive))
+        )
+      ) : Effect_exports.void,
+      Effect_exports.withSpan("DeploymentPlanner.checkMetadata", {
+        attributes: { enabled: openbao.enabled, secrets: secrets.length }
+      })
     );
   }
   renderPlan({
@@ -37256,23 +37992,13 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
     compose: compose4,
     domains,
     target,
-    keys: keys3
+    rendered
   }) {
-    const provider = providerOf(environment);
-    const { folder } = manifest.secrets;
+    const { env } = rendered;
     return pipe(
-      renderEnvironment({ provider, folder, keys: keys3, version }),
-      Effect_exports.flatMap(
-        (env) => Effect_exports.all({
-          env: Effect_exports.succeed(env),
-          changes: this.changesAgainst({ target, env, domains })
-        })
-      ),
-      Effect_exports.map(({ env, changes }) => ({
-        provider,
-        folder,
-        keys: keys3,
-        env,
+      this.changesAgainst({ target, env, domains }),
+      Effect_exports.map((changes) => ({
+        ...rendered,
         version,
         domains,
         changes,
@@ -37318,8 +38044,7 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
     );
   }
   listKeys({
-    manifest,
-    environment,
+    source,
     target
   }) {
     const { dokploy } = this.dependencies;
@@ -37328,8 +38053,8 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
       Effect_exports.flatMap(
         (providers) => findVaultProvider({
           providers,
-          name: providerOf(environment),
-          folder: manifest.secrets.folder
+          name: source.provider,
+          folder: source.folder
         })
       ),
       Effect_exports.flatMap(
@@ -37351,7 +38076,8 @@ var DeploymentPlanner = class _DeploymentPlanner extends Context_exports.Service
       effect_service_exports.all({
         inputs: ActionInputs,
         workspaceFiles: WorkspaceFiles,
-        dokploy: DokployClient
+        dokploy: DokployClient,
+        openbao: OpenBaoMetadata
       }),
       (dependencies) => ManifestDeploymentPlanner.make(dependencies)
     )
@@ -37367,8 +38093,8 @@ var DeploymentPlanner = class _DeploymentPlanner extends Context_exports.Service
         environmentId: "test-environment-id",
         composeId: "test-compose-id"
       },
-      provider: "demo-prod",
-      folder: "/demo",
+      secrets: { kind: "infisical", provider: "demo-prod", folder: "/demo" },
+      unverifiedReferences: [],
       keys: ["MESSAGE"],
       env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
       version: Option_exports.none(),
@@ -37473,6 +38199,27 @@ function unsupportedSection({ unsupported: unsupported3 }) {
     `> \`allowedMethods\` is set on ${Array_exports.map(unsupported3, cell).join(", ")}: Dokploy's domain API has no such setting, so \`apply\` will refuse this manifest.`
   ];
 }
+function secretsNote({ secrets }) {
+  if (secrets.kind === "infisical") return [];
+  const providers = Array_exports.map(
+    secrets.providers,
+    ({ name, mount }) => `${cell(name)} (mount ${cell(mount)})`
+  ).join(", ");
+  const checked = secrets.metadataChecked ? "every path was also checked live in OpenBao metadata" : "no `openbao-token`, so OpenBao metadata was not checked";
+  return ["", `Secrets: OpenBao references through ${providers}; ${checked}.`];
+}
+function unverifiedReferencesSection({
+  unverifiedReferences,
+  secrets
+}) {
+  if (unverifiedReferences.length === 0) return [];
+  const advice = secrets.kind === "openbao" && secrets.metadataChecked ? "Their paths are live in OpenBao metadata, but their fields are unchecked: a missing field fails the deploy." : "A missing one fails the deploy: check them, or pass an `openbao-token` to check their paths in OpenBao.";
+  return [
+    "",
+    `> [!WARNING]`,
+    `> Dokploy's listing of the provider stops at 200 entries, so these references could not be checked: ${Array_exports.map(unverifiedReferences, cell).join(", ")}. ${advice}`
+  ];
+}
 function strayRouterHostsSection({ strayRouterHosts: strayRouterHosts2 }) {
   if (strayRouterHosts2.length === 0) return [];
   return [
@@ -37495,16 +38242,18 @@ function renderPlanReport(plan) {
     `Compose ${cell(dokploy.compose)} of project ${cell(dokploy.project)}, environment ${cell(dokploy.environment)}. ${headline(plan)}`,
     "",
     ...envSection(plan),
+    ...secretsNote(plan),
     "",
     ...domainsSection(plan),
     ...unsupportedSection(plan),
+    ...unverifiedReferencesSection(plan),
     ...strayRouterHostsSection(plan),
     ""
   ].join("\n");
 }
 
 // src/pull-request-comments.ts
-var requestTimeoutSeconds2 = 30;
+var requestTimeoutSeconds3 = 30;
 var commentsPerPage = 50;
 var maxCommentPages = 20;
 var IssueComment = Schema_exports.Struct({
@@ -37757,11 +38506,11 @@ var ForgePullRequestComments = class _ForgePullRequestComments {
         (response) => response.status >= 200 && response.status < 300 ? this.decodeBody({ endpoint, schema: schema2, response }) : this.failWith({ endpoint, response })
       ),
       Effect_exports.timeoutOrElse({
-        duration: `${requestTimeoutSeconds2} seconds`,
+        duration: `${requestTimeoutSeconds3} seconds`,
         orElse: () => Effect_exports.fail(
           PullRequestCommentError.failed({
             endpoint,
-            reason: `no answer within ${requestTimeoutSeconds2} seconds`
+            reason: `no answer within ${requestTimeoutSeconds3} seconds`
           })
         )
       }),
@@ -37929,6 +38678,14 @@ var WorkflowCommands = class _WorkflowCommands extends Context_exports.Service()
 };
 
 // src/deploy-action.ts
+function secretsAnnotations({ secrets }) {
+  return secrets.kind === "infisical" ? { provider: secrets.provider, folder: secrets.folder } : {
+    providers: secrets.providers.map(
+      ({ name, mount }) => `${name} (mount ${mount})`
+    ),
+    openbaoMetadataChecked: secrets.metadataChecked
+  };
+}
 function planAnnotations(plan) {
   return {
     environment: plan.environment,
@@ -37936,8 +38693,7 @@ function planAnnotations(plan) {
     dokployEnvironment: plan.dokploy.environment,
     compose: plan.dokploy.compose,
     composeId: plan.dokploy.composeId,
-    provider: plan.provider,
-    folder: plan.folder,
+    ...secretsAnnotations(plan),
     keys: plan.keys.length
   };
 }
@@ -37983,6 +38739,12 @@ var ManifestDeployAction = class _ManifestDeployAction {
           onSome: (token) => workflowCommands.mask(token)
         })
       ),
+      Effect_exports.andThen(
+        () => Option_exports.match(inputs.openbao, {
+          onNone: () => Effect_exports.void,
+          onSome: ({ token }) => workflowCommands.mask(token)
+        })
+      ),
       Effect_exports.andThen(() => this.dependencies.planner.plan),
       Effect_exports.tap((plan) => this.report(plan)),
       Effect_exports.flatMap((plan) => this.runMode(plan)),
@@ -38013,6 +38775,16 @@ var ManifestDeployAction = class _ManifestDeployAction {
         () => plan.unsupported.length === 0 ? Effect_exports.void : effect_log_exports.warning(
           "DeployAction found allowedMethods, which apply refuses",
           { routes: plan.unsupported }
+        )
+      ),
+      Effect_exports.andThen(
+        () => plan.unverifiedReferences.length === 0 ? Effect_exports.void : effect_log_exports.warning(
+          "DeployAction could not verify OpenBao references: the provider listing is truncated",
+          {
+            environment: plan.environment,
+            pathsCheckedInOpenBao: plan.secrets.kind === "openbao" && plan.secrets.metadataChecked,
+            references: plan.unverifiedReferences
+          }
         )
       ),
       Effect_exports.andThen(
@@ -38150,7 +38922,8 @@ var plannerLayer = DeploymentPlanner.layer.pipe(
   Layer_exports.provide(
     Layer_exports.mergeAll(
       WorkspaceFiles.layer.pipe(Layer_exports.provide(NodeFileSystem_exports.layer)),
-      dokployLayer
+      dokployLayer,
+      OpenBaoMetadata.layer.pipe(Layer_exports.provide(FetchHttpClient_exports.layer))
     )
   )
 );

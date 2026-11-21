@@ -100,9 +100,9 @@ describe('Manifest', () => {
       const manifest = yield* decode(yaml)
 
       // Then: the declared values win over the defaults
-      expect(manifest.environments['production']?.secrets?.provider).toBe(
-        'template-prod',
-      )
+      expect(manifest.environments['production']?.secrets).toEqual({
+        provider: 'template-prod',
+      })
       expect(manifest.domains[1]).toEqual({
         service: 'template-api',
         subdomain: 'api',
@@ -261,6 +261,176 @@ describe('Manifest', () => {
   })
 })
 
+const openBaoManifest = templateManifest
+  .replace('secrets:\n  folder: /template\n\n', '')
+  .replace(
+    '    domain: template.example.com',
+    [
+      '    secrets:',
+      '      openbao:',
+      '        template-prod:',
+      '          POSTGRES_PASSWORD: prod/postgres:password',
+      "          DATABASE_URL: 'postgres://app:${prod/postgres:password}@db:5432/app'",
+      '        shared-prod:',
+      '          DISCORD_CLIENT_ID: prod/oauth-discord:client_id',
+      '    domain: template.example.com',
+    ].join('\n'),
+  )
+
+function withOpenBaoValue(value: string) {
+  return openBaoManifest.replace(
+    'POSTGRES_PASSWORD: prod/postgres:password',
+    `POSTGRES_PASSWORD: ${JSON.stringify(value)}`,
+  )
+}
+
+describe('Manifest OpenBao secrets', () => {
+  effect('should decode the OpenBao form without the top-level folder', () =>
+    Effect.gen(function* () {
+      // Given: an environment mapping env keys to two OpenBao providers
+      const yaml = openBaoManifest
+
+      // When: decoding it
+      const manifest = yield* decode(yaml)
+
+      // Then: the mapping is kept as written, per provider
+      expect(manifest.secrets).toBeUndefined()
+      expect(manifest.environments['production']?.secrets).toEqual({
+        openbao: {
+          'template-prod': {
+            POSTGRES_PASSWORD: 'prod/postgres:password',
+            DATABASE_URL:
+              'postgres://app:${prod/postgres:password}@db:5432/app',
+          },
+          'shared-prod': { DISCORD_CLIENT_ID: 'prod/oauth-discord:client_id' },
+        },
+      })
+    }),
+  )
+
+  effect(
+    'should refuse an Infisical environment when the folder is missing',
+    () =>
+      Effect.gen(function* () {
+        // Given: a second environment left on Infisical, without secrets.folder
+        const yaml = openBaoManifest.replace(
+          'domains:',
+          [
+            '  staging:',
+            '    dokploy:',
+            '      project: template',
+            '      environment: staging',
+            '      compose: template',
+            '    domain: staging.example.com',
+            '',
+            'domains:',
+          ].join('\n'),
+        )
+
+        // When: decoding it
+        const error = yield* Effect.flip(decode(yaml))
+
+        // Then: the environment that needs the folder is named
+        expect(error.message).toContain('staging')
+        expect(error.message).toContain('secrets.folder')
+      }),
+  )
+
+  effect('should refuse a provider and an OpenBao mapping together', () =>
+    Effect.gen(function* () {
+      // Given: an environment naming an Infisical provider next to its mapping
+      const yaml = openBaoManifest.replace(
+        '      openbao:',
+        '      provider: infisical-template\n      openbao:',
+      )
+
+      // When: decoding it
+      const exit = yield* decodeExit(yaml)
+
+      // Then: it is refused
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+
+  effect('should refuse an empty provider mapping', () =>
+    Effect.gen(function* () {
+      // Given: a provider mapping no key
+      const yaml = openBaoManifest.replace(
+        '        shared-prod:\n          DISCORD_CLIENT_ID: prod/oauth-discord:client_id',
+        '        shared-prod: {}',
+      )
+
+      // When: decoding it
+      const exit = yield* decodeExit(yaml)
+
+      // Then: it is refused
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+
+  for (const value of [
+    'prod/postgres:password',
+    'prod/oauth-google:client_id',
+    'postgres://app:${prod/postgres:password}@db:5432/app?sslmode=disable',
+    '${prod/a:user}:${prod/a:password}',
+  ]) {
+    effect(`should accept the value ${value}`, () =>
+      Effect.gen(function* () {
+        // Given: a reference or a composed value
+        const yaml = withOpenBaoValue(value)
+
+        // When: decoding it
+        const exit = yield* decodeExit(yaml)
+
+        // Then: it is accepted
+        expect(Exit.isSuccess(exit)).toBe(true)
+      }),
+    )
+  }
+
+  for (const value of [
+    'a literal',
+    'prod/postgres',
+    '/prod/postgres:password',
+    'prod/../other:password',
+    "it's ${prod/a:b}",
+    '${prod/a:b}$HOME',
+    '${prod/a:b}\\n',
+    '${prod/a:b}\nNEXT=1',
+    '${{vault.other-prod.prod/a:b}}',
+    'prod/a:b:c',
+  ]) {
+    effect(`should refuse the value ${JSON.stringify(value)}`, () =>
+      Effect.gen(function* () {
+        // Given: a literal, an absolute or escaping path, or a character the env block cannot carry
+        const yaml = withOpenBaoValue(value)
+
+        // When: decoding it
+        const exit = yield* decodeExit(yaml)
+
+        // Then: it is refused
+        expect(Exit.isFailure(exit)).toBe(true)
+      }),
+    )
+  }
+
+  effect('should refuse an environment key that is not a variable name', () =>
+    Effect.gen(function* () {
+      // Given: a key with a space
+      const yaml = openBaoManifest.replace(
+        'POSTGRES_PASSWORD: prod',
+        "'POSTGRES PASSWORD': prod",
+      )
+
+      // When: decoding it
+      const exit = yield* decodeExit(yaml)
+
+      // Then: it is refused
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+})
+
 describe('manifestJsonSchema', () => {
   it('should publish a closed JSON Schema with the required keys', () => {
     // Given: the manifest schema
@@ -272,7 +442,7 @@ describe('manifestJsonSchema', () => {
     expect(jsonSchema).toMatchObject({
       $schema: 'https://json-schema.org/draft/2020-12/schema',
       additionalProperties: false,
-      required: ['version', 'secrets', 'environments', 'domains'],
+      required: ['version', 'environments', 'domains'],
     })
   })
 })

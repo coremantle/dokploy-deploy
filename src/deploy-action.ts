@@ -54,6 +54,17 @@ interface DeployActionDependencies {
   readonly deployer: ComposeDeployerShape
 }
 
+function secretsAnnotations({ secrets }: DeploymentPlan) {
+  return secrets.kind === 'infisical'
+    ? { provider: secrets.provider, folder: secrets.folder }
+    : {
+        providers: secrets.providers.map(
+          ({ name, mount }) => `${name} (mount ${mount})`,
+        ),
+        openbaoMetadataChecked: secrets.metadataChecked,
+      }
+}
+
 function planAnnotations(plan: DeploymentPlan) {
   return {
     environment: plan.environment,
@@ -61,8 +72,7 @@ function planAnnotations(plan: DeploymentPlan) {
     dokployEnvironment: plan.dokploy.environment,
     compose: plan.dokploy.compose,
     composeId: plan.dokploy.composeId,
-    provider: plan.provider,
-    folder: plan.folder,
+    ...secretsAnnotations(plan),
     keys: plan.keys.length,
   }
 }
@@ -115,6 +125,12 @@ class ManifestDeployAction implements DeployActionShape {
           onSome: (token) => workflowCommands.mask(token),
         }),
       ),
+      Effect.andThen(() =>
+        Option.match(inputs.openbao, {
+          onNone: () => Effect.void,
+          onSome: ({ token }) => workflowCommands.mask(token),
+        }),
+      ),
       Effect.andThen(() => this.dependencies.planner.plan),
       Effect.tap((plan) => this.report(plan)),
       Effect.flatMap((plan) => this.runMode(plan)),
@@ -150,6 +166,20 @@ class ManifestDeployAction implements DeployActionShape {
           : EffectLog.warning(
               'DeployAction found allowedMethods, which apply refuses',
               { routes: plan.unsupported },
+            ),
+      ),
+      Effect.andThen(() =>
+        plan.unverifiedReferences.length === 0
+          ? Effect.void
+          : EffectLog.warning(
+              'DeployAction could not verify OpenBao references: the provider listing is truncated',
+              {
+                environment: plan.environment,
+                pathsCheckedInOpenBao:
+                  plan.secrets.kind === 'openbao' &&
+                  plan.secrets.metadataChecked,
+                references: plan.unverifiedReferences,
+              },
             ),
       ),
       Effect.andThen(() =>

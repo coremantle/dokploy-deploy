@@ -10,7 +10,9 @@ the deploy — with an API key scoped to its Dokploy project.
 > requests); `apply` [converges](#what-apply-writes) the environment block and
 > the domains, then [deploys](#the-deploy) the compose and fails the job unless
 > Dokploy deployed the job's commit. `v1` is the first tag that acts on
-> Dokploy; `v0` stays on the read-only `v0.1.0`.
+> Dokploy; `v0` stays on the read-only `v0.1.0`. Since `v1.3.0` an
+> environment can read [OpenBao](#openbao-secrets-secretsopenbao) instead of
+> an Infisical folder.
 
 ## Usage
 
@@ -77,15 +79,17 @@ nothing. The runner — or the job's container image — must provide **Node.js
 | `commit`         | no       | `${{ github.sha }}`   | Full sha the deployment must have deployed. Empty: deploy without the check (the `sha` output stays empty).                               |
 | `deploy-timeout` | no       | `1800`                | Seconds to wait for the deployment to end once requested, Dokploy's queue included.                                                       |
 | `version-env`    | no       | empty (off)           | Variable name, e.g. `APP_VERSION`: `apply` also writes `<name>=<short sha>`, see [the deployed commit](#the-deployed-commit-version-env). |
+| `openbao-url`    | no       | empty                 | Base URL of OpenBao as the runner reaches it, e.g. `https://bao.example.com`. Read only with `openbao-token`.                             |
+| `openbao-token`  | no       | empty (off)           | OpenBao token reading the **metadata** of the referenced paths: see [the metadata check](#checking-openbao-metadata-openbao-token).       |
 
 Every input is trimmed, then validated before anything runs: a URL that is
 not `https`, a blank key or one with spaces or line breaks inside, a manifest
 path spanning several lines, an environment that is not a lowercase name, a
 mode other than `plan` / `apply`, a `pr-comment` or `deploy` other than
 `true` / `false`, a `commit` that is not a full 40- or 64-character sha, a
-`deploy-timeout` that is not a positive number of seconds, or a `version-env`
+`deploy-timeout` that is not a positive number of seconds, a `version-env`
 that is not a variable name (letters, digits and `_`, not starting with a
-digit) fails the step.
+digit), or an `openbao-token` without an `https` `openbao-url` fails the step.
 
 ## Outputs
 
@@ -154,23 +158,24 @@ domains:
     port: 4000
 ```
 
-| Field                                  | Required | Default                      | Meaning                                                                                                                                                                     |
-| -------------------------------------- | -------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`                              | yes      | —                            | Always `1`.                                                                                                                                                                 |
-| `composeFile`                          | no       | `docker-compose.dokploy.yml` | Compose file, relative to the workspace: its services must hold the domains, and its `${VAR}` without a default must all be secret keys.                                    |
-| `secrets.folder`                       | yes      | —                            | Infisical folder the references point to: `/<project>`, a folder under it, or `/shared` (see the reference guard).                                                          |
-| `environments.<name>`                  | yes, ≥ 1 | —                            | One entry per environment; `<name>` is what the `environment` input selects.                                                                                                |
-| `environments.<name>.dokploy`          | yes      | —                            | `project`, `environment` and `compose` **names**, resolved to ids through the API.                                                                                          |
-| `environments.<name>.secrets.provider` | no       | see below                    | Dokploy vault provider that reads `secrets.folder` for this environment.                                                                                                    |
-| `environments.<name>.domain`           | yes      | —                            | Parent domain: every host is `<subdomain>.<domain>`.                                                                                                                        |
-| `domains[]`                            | yes, ≥ 1 | —                            | Shared by every environment.                                                                                                                                                |
-| `domains[].service`                    | yes      | —                            | Compose service the domain routes to.                                                                                                                                       |
-| `domains[].subdomain`                  | yes      | —                            | A single DNS label.                                                                                                                                                         |
-| `domains[].port`                       | yes      | —                            | Container port, 1–65535.                                                                                                                                                    |
-| `domains[].path`                       | no       | `/`                          | Path prefix.                                                                                                                                                                |
-| `domains[].https`                      | no       | `true`                       | Serve the domain over HTTPS.                                                                                                                                                |
-| `domains[].certificateType`            | no       | `letsencrypt`                | `letsencrypt`, `none` or `custom`.                                                                                                                                          |
-| `domains[].allowedMethods`             | no       | —                            | HTTP methods the domain answers. Dokploy's domain API has no such setting: `plan` warns and `apply` refuses the manifest — use [Traefik labels](#restricting-http-methods). |
+| Field                                  | Required | Default                      | Meaning                                                                                                                                                                      |
+| -------------------------------------- | -------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                              | yes      | —                            | Always `1`.                                                                                                                                                                  |
+| `composeFile`                          | no       | `docker-compose.dokploy.yml` | Compose file, relative to the workspace: its services must hold the domains, and its `${VAR}` without a default must all be secret keys.                                     |
+| `secrets.folder`                       | see →    | —                            | Infisical folder the references point to: `/<project>`, a folder under it, or `/shared` (see the reference guard). Required unless every environment sets `secrets.openbao`. |
+| `environments.<name>`                  | yes, ≥ 1 | —                            | One entry per environment; `<name>` is what the `environment` input selects.                                                                                                 |
+| `environments.<name>.dokploy`          | yes      | —                            | `project`, `environment` and `compose` **names**, resolved to ids through the API.                                                                                           |
+| `environments.<name>.secrets.provider` | no       | see below                    | Dokploy vault provider that reads `secrets.folder` for this environment.                                                                                                     |
+| `environments.<name>.secrets.openbao`  | no       | —                            | Reads OpenBao instead of Infisical: providers and the explicit env mapping, see [OpenBao secrets](#openbao-secrets-secretsopenbao). Excludes `secrets.provider`.             |
+| `environments.<name>.domain`           | yes      | —                            | Parent domain: every host is `<subdomain>.<domain>`.                                                                                                                         |
+| `domains[]`                            | yes, ≥ 1 | —                            | Shared by every environment.                                                                                                                                                 |
+| `domains[].service`                    | yes      | —                            | Compose service the domain routes to.                                                                                                                                        |
+| `domains[].subdomain`                  | yes      | —                            | A single DNS label.                                                                                                                                                          |
+| `domains[].port`                       | yes      | —                            | Container port, 1–65535.                                                                                                                                                     |
+| `domains[].path`                       | no       | `/`                          | Path prefix.                                                                                                                                                                 |
+| `domains[].https`                      | no       | `true`                       | Serve the domain over HTTPS.                                                                                                                                                 |
+| `domains[].certificateType`            | no       | `letsencrypt`                | `letsencrypt`, `none` or `custom`.                                                                                                                                           |
+| `domains[].allowedMethods`             | no       | —                            | HTTP methods the domain answers. Dokploy's domain API has no such setting: `plan` warns and `apply` refuses the manifest — use [Traefik labels](#restricting-http-methods).  |
 
 Unknown keys are rejected: a typo fails `plan` instead of being ignored. The
 default provider is the one babel creates when onboarding the project:
@@ -178,27 +183,130 @@ default provider is the one babel creates when onboarding the project:
 named exactly `production`, both as lowercase slugs of the Dokploy names (64
 characters at most).
 
+### OpenBao secrets (`secrets.openbao`)
+
+An environment can read **OpenBao** (Dokploy's "HashiCorp Vault / OpenBao"
+secrets provider, KV v2) instead of an Infisical folder. It names, per
+provider, **every** environment key it writes and where its value lives —
+there is no folder to list, so nothing reaches the compose that the manifest
+does not name:
+
+```yaml
+environments:
+  production:
+    dokploy:
+      project: my-app
+      environment: production
+      compose: my-app
+    secrets:
+      openbao:
+        my-app-prod: # a Dokploy provider: one KV mount × one environment
+          POSTGRES_PASSWORD: prod/postgres:password
+          DATABASE_URL: 'postgres://my-app:${prod/postgres:password}@my-app-db:5432/my-app'
+          RESEND_API_KEY: prod/resend:api_key
+        shared-prod: # the `shared` mount, for values several apps read on purpose
+          DISCORD_CLIENT_ID: prod/oauth-discord:client_id
+          DISCORD_CLIENT_SECRET: prod/oauth-discord:client_secret
+    domain: my-app.example.com
+```
+
+- **A value is a reference `<path>:<field>`**: the path **relative to the
+  provider's mount** (the environment is the first segment in the layout
+  babel uses, e.g. `prod/postgres`), the field one key of that secret.
+  `apply` writes `KEY='${{vault.<provider>.<path>:<field>}}'`, the reference
+  Dokploy resolves at deploy time (it reads `<mount>/data/<path>` and takes
+  the field; checked against Dokploy v0.31's provider).
+- **Composed values**: a value may also be a text holding one or more
+  `${<path>:<field>}`, e.g. a connection URL around a password. Its literal
+  parts are written as they are, so they cannot hold a quote (`'`, `"`, a
+  backtick), a `$` outside a reference, a backslash or a control character.
+  A value without any reference is refused: non-secret settings belong in the
+  compose file.
+- **Several providers**: each environment key belongs to exactly one
+  provider; a key mapped twice is refused. A composed value reads one
+  provider only.
+- **Field names are the layout's**: credentials usually carry neutral field
+  names (`username`, `password`, `api_key`, `client_id`…) and the
+  environment key is chosen here, on the left.
+- **Per environment, opt-in**: environments without `secrets.openbao` keep
+  reading `secrets.folder` through Infisical, unchanged. An application moves
+  one environment at a time; once none reads Infisical, `secrets.folder` can
+  go.
+- **Mount guard** (accident protection, like the folder guard): a provider's
+  mount must be the slug of the Dokploy project name (`My App` → `my-app`) or
+  `shared`; another application's mount is refused before any secret is
+  listed. The guard does not look at the provider's OpenBao namespace:
+  keep each environment on providers of the right namespace.
+- **Editor schema**: the published JSON Schema cannot express that an
+  environment without `secrets.openbao` needs the top-level
+  `secrets.folder`; the action checks it when it decodes the manifest.
+
+`plan` checks each reference **through Dokploy**, without any OpenBao
+credential: `vaultProvider.listSecretNames` returns the `<path>:<field>`
+names the provider's token can see (Dokploy reads the secrets to list their
+fields; only names come back). A reference missing from that list fails the
+step — for an empty list, check that the provider's token may **list** its
+mount's metadata (`<mount>/metadata` and `<mount>/metadata/<env>/*`) besides
+reading `<mount>/data/<env>/*`. Dokploy stops that listing at **200**
+entries: past it, a reference not seen is reported as a **warning** (log and
+plan comment) instead of failing, since it may simply be beyond the limit.
+
+#### Checking OpenBao metadata (`openbao-token`)
+
+With an `openbao-token` (and its `openbao-url`), `plan` and `apply` also
+read, from the runner, the **KV v2 metadata** of each referenced path
+(`GET /v1/<mount>/metadata/<path>`, the provider's mount and namespace as
+Dokploy reports them) and fail unless its current version exists and is
+neither deleted nor destroyed. It never reads a value: a token whose policy
+grants `read` on `<mount>/metadata/<env>/*` only is enough (KV v2 metadata
+lists no field names, so fields are checked by the Dokploy listing above).
+The token is masked in the job log and only ever sent over `https`; a
+redirect fails like any other non-2xx answer.
+
+```yaml
+- uses: https://github.com/coremantle/dokploy-deploy@v1
+  with:
+    api-url: ${{ vars.DOKPLOY_API_URL }}
+    api-key: ${{ secrets.DOKPLOY_API_KEY }}
+    mode: plan
+    openbao-url: ${{ vars.OPENBAO_URL }}
+    openbao-token: ${{ steps.openbao-login.outputs.token }} # e.g. a short-lived token from a CI login
+```
+
+Without a token, nothing is sent to OpenBao and the plan comment says so —
+also when `openbao-url` is set but the token expression is empty (a login
+step that produced nothing): check the comment's line. A current version
+whose deletion is only scheduled (`delete_version_after`, a future
+`deletion_time`) counts as live.
+
 ### What `plan` checks and renders
 
 1. The manifest decodes and declares the requested `environment`.
 2. **Reference guard**: `secrets.folder` is `/<project slug>`, a folder under
-   it, or `/shared`, before any call to Dokploy.
+   it, or `/shared`, before any call to Dokploy (OpenBao: the mount guard,
+   once the providers are read, see [above](#openbao-secrets-secretsopenbao)).
 3. Every domain routes to a service of `composeFile`, and no host and path is
    declared twice.
 4. The project, environment and compose names each match exactly one item the
    key sees (`project.all`).
 5. The provider is visible to the key, is an Infisical provider, and reads
-   exactly `secrets.folder` (`vaultProvider.all`).
+   exactly `secrets.folder` (`vaultProvider.all`). OpenBao: each provider is
+   visible and of type HashiCorp Vault / OpenBao.
 6. The folder's keys, imports included, are listed with
    `vaultProvider.listSecretNames`: no Infisical credential is needed.
+   OpenBao: each provider's `<path>:<field>` names are listed the same way
+   and must hold every reference; with an `openbao-token`, each path's
+   metadata is checked too.
 7. **Compose check**: every `${VAR}` of `composeFile` without a default
-   (`$VAR`, `${VAR}`, `${VAR:?…}`, `${VAR?…}`) is one of those keys — a
+   (`$VAR`, `${VAR}`, `${VAR:?…}`, `${VAR?…}`) is one of those keys (OpenBao:
+   a key of the environment's mapping) — a
    reference to a missing key fails the Dokploy deploy. The
    [`version-env`](#the-deployed-commit-version-env) variable, when set,
    counts as one of them.
 8. The environment block is rendered, one line per key, sorted:
-   `KEY='${{vault.<provider>.<folder>:KEY}}'`. Key names are limited to
-   letters, digits, `_`, `.` and `-`. With
+   `KEY='${{vault.<provider>.<folder>:KEY}}'` (OpenBao: the mapped value,
+   each reference written `${{vault.<provider>.<path>:<field>}}`). Key names
+   are limited to letters, digits, `_`, `.` and `-`. With
    [`version-env`](#the-deployed-commit-version-env), one more line follows
    them: `<name>=<short sha>`.
 9. **Diff**: the block is compared with the compose's current env
@@ -288,8 +396,8 @@ APP_VERSION=2f0be93668d4
 - **It needs a commit**: with `commit: ''` the step fails, before any call
   to Dokploy, instead of writing an empty version. On a `pull_request`, `plan` shows the `commit` input — the
   merge commit unless you pass the head sha (see [the deploy](#the-deploy)).
-- **A secret of the same name fails the step**: the action would write the key
-  twice. Rename one of them.
+- **A secret of the same name fails the step** (OpenBao: a key of the
+  mapping): the action would write the key twice. Rename one of them.
 - The [commit check](#the-deploy) is unchanged: it compares the full sha
   Dokploy recorded with the `commit` input, not this line. The line is what
   the job wrote, not read back from the build: when the commit check fails
@@ -448,11 +556,15 @@ commit check then decides, as it compares what was actually deployed.
   logged or commented.
 - **Reference guard — accident protection, not a barrier.** The action only
   renders references under `/<project>` (the slug of the Dokploy project
-  name) and `/shared`. Dokploy's providers do not confine references to a
+  name) and `/shared` — for OpenBao, through providers whose mount is the
+  project slug or `shared`. Dokploy's providers do not confine references to a
   folder, so this guard stops a typo or a copy-paste from pointing an
   application at another one's secrets. It does
   not stop a determined author: the application's compose already runs with
   root-equivalent access to its host.
+- **The OpenBao token reads metadata, never values.** It is optional, masked,
+  sent over `https` only, and needs no more than `read` on the metadata of
+  the referenced paths: give the job a short-lived token scoped that way.
 - **A failed deploy prints the end of its log.** The last 50 lines of the
   Dokploy deployment log go to the job log, as Dokploy shows them to anyone
   who can read the compose's deployments: Dokploy's own lines name missing

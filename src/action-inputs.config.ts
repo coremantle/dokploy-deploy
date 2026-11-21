@@ -26,6 +26,8 @@ export const inputVariables = {
   commit: 'DOKPLOY_DEPLOY_COMMIT',
   deployTimeout: 'DOKPLOY_DEPLOY_DEPLOY_TIMEOUT',
   versionEnv: 'DOKPLOY_DEPLOY_VERSION_ENV',
+  openbaoUrl: 'DOKPLOY_DEPLOY_OPENBAO_URL',
+  openbaoToken: 'DOKPLOY_DEPLOY_OPENBAO_TOKEN',
   outputFile: 'GITHUB_OUTPUT',
 } as const
 
@@ -50,6 +52,12 @@ const EnvironmentName = Schema.Trim.check(isEnvironmentName)
 const HttpsUrl = Schema.URLFromString.check(
   Schema.makeFilter((url) => url.protocol === 'https:', {
     message: 'the Dokploy API is only called over https',
+  }),
+)
+
+const OpenBaoUrl = Schema.URLFromString.check(
+  Schema.makeFilter((url) => url.protocol === 'https:', {
+    message: 'openbao-url is an https URL: the token is only sent over https',
   }),
 )
 
@@ -119,6 +127,28 @@ export interface ForgeContext {
   readonly pullRequest: Option.Option<number>
 }
 
+export interface OpenBaoAccess {
+  readonly url: URL
+  readonly token: Redacted.Redacted<string>
+}
+
+function openBaoAccess(): Config.Config<Option.Option<OpenBaoAccess>> {
+  return optionalInput({
+    schema: Schema.RedactedFromValue(ForgeToken),
+    name: inputVariables.openbaoToken,
+  }).pipe(
+    Config.flatMap(
+      Option.match({
+        onNone: () => Config.succeed(Option.none<OpenBaoAccess>()),
+        onSome: (token) =>
+          Config.schema(OpenBaoUrl, inputVariables.openbaoUrl).pipe(
+            Config.map((url) => Option.some<OpenBaoAccess>({ url, token })),
+          ),
+      }),
+    ),
+  )
+}
+
 export interface ActionInputsShape {
   readonly apiUrl: URL
   readonly apiKey: Redacted.Redacted<string>
@@ -132,6 +162,7 @@ export interface ActionInputsShape {
   readonly commit: Option.Option<string>
   readonly deployTimeout: Duration.Duration
   readonly versionEnv: Option.Option<string>
+  readonly openbao: Option.Option<OpenBaoAccess>
   readonly outputFile: Option.Option<string>
 }
 
@@ -180,6 +211,7 @@ export class ActionInputs extends Context.Service<
         schema: VersionVariable,
         name: inputVariables.versionEnv,
       }),
+      openbao: openBaoAccess(),
       outputFile: optionalInput({
         schema: OutputFile,
         name: inputVariables.outputFile,
@@ -219,6 +251,7 @@ export class ActionInputs extends Context.Service<
       commit: Option.some(testCommit),
       deployTimeout: Duration.seconds(defaultDeployTimeoutSeconds),
       versionEnv: Option.none(),
+      openbao: Option.none(),
       outputFile: Option.none(),
       ...shape,
     })

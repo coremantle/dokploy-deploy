@@ -41,6 +41,14 @@ inputs:
     description: "Name of a variable, e.g. APP_VERSION, that `apply` writes into the environment block as `<name>=<sha>`: the first 12 characters of the `commit` input, the commit being deployed. A plain value, not a secret reference, owned by the action; `plan` shows it. Empty (the default): no such line. Needs a `commit`, and fails when the secrets folder holds a key of that name."
     required: false
     default: ""
+  openbao-url:
+    description: "Base URL of OpenBao as the runner reaches it, e.g. https://bao.example.com (https only). Read only with `openbao-token`."
+    required: false
+    default: ""
+  openbao-token:
+    description: "OpenBao token allowed to read the **metadata** of the paths the manifest's `secrets.openbao` references (never their values). Set: `plan` and `apply` also check that each path exists in OpenBao with a live current version. Empty (the default): no OpenBao call; the references are checked through Dokploy only. Masked in the job log."
+    required: false
+    default: ""
   deploy-timeout:
     description: Seconds to wait for the deployment to end once requested, Dokploy's queue included (it is shared by every project); the commit read afterwards adds up to 30 seconds.
     required: false
@@ -79,6 +87,8 @@ runs:
         DOKPLOY_DEPLOY_COMMIT: ${{ inputs.commit }}
         DOKPLOY_DEPLOY_DEPLOY_TIMEOUT: ${{ inputs.deploy-timeout }}
         DOKPLOY_DEPLOY_VERSION_ENV: ${{ inputs.version-env }}
+        DOKPLOY_DEPLOY_OPENBAO_URL: ${{ inputs.openbao-url }}
+        DOKPLOY_DEPLOY_OPENBAO_TOKEN: ${{ inputs.openbao-token }}
         # Why: GitHub always sets github.api_url; the fallback is Forgejo's API under its server URL, should a runner leave it empty.
         DOKPLOY_DEPLOY_FORGE_API_URL: ${{ github.api_url || format('{0}/api/v1', github.server_url) }}
         DOKPLOY_DEPLOY_REPOSITORY: ${{ github.repository }}
