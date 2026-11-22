@@ -74,6 +74,7 @@ function planAnnotations(plan: DeploymentPlan) {
     composeId: plan.dokploy.composeId,
     ...secretsAnnotations(plan),
     keys: plan.keys.length,
+    plainKeys: plan.plainKeys.length,
   }
 }
 

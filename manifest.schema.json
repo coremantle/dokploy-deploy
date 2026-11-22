@@ -11,7 +11,7 @@
     "composeFile": {
       "type": "string",
       "pattern": "^(?!\\/)(?!.*(?:^|\\/)\\.\\.(?:\\/|$))[^\\n\\r]+$",
-      "description": "Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys.",
+      "description": "Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys or plain values (`env`).",
       "default": "docker-compose.dokploy.yml"
     },
     "secrets": {
@@ -107,6 +107,19 @@
                   "additionalProperties": false
                 }
               ]
+            },
+            "env": {
+              "type": "object",
+              "patternProperties": {
+                "^[A-Za-z_][A-Za-z0-9_.-]*$": {
+                  "type": "string",
+                  "pattern": "^[^\\x00-\\x1F\\x7F-\\x9F\\x22\\x27\\x60$\\\\]*$",
+                  "description": "A non-secret value, written as it is: no quote, backtick, `$`, backslash or control character (the action also refuses a URL holding a password). Quote numbers and booleans in YAML."
+                }
+              },
+              "additionalProperties": false,
+              "minProperties": 1,
+              "description": "Plain, non-secret environment values (URLs, names, settings), written into the Dokploy env as they are. The action refuses a key that looks like a secret (KEY, TOKEN, SECRET, PASSWORD…)."
             },
             "domain": {
               "type": "string",

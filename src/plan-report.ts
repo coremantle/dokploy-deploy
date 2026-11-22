@@ -119,6 +119,14 @@ function secretsNote({ secrets }: DeploymentPlan) {
   return ['', `Secrets: OpenBao references through ${providers}; ${checked}.`]
 }
 
+function plainValuesNote({ plainKeys }: DeploymentPlan) {
+  if (plainKeys.length === 0) return []
+  return [
+    '',
+    `Plain values, written as the manifest's \`env\` gives them (not secrets): ${Array.map(plainKeys, cell).join(', ')}.`,
+  ]
+}
+
 function unverifiedReferencesSection({
   unverifiedReferences,
   secrets,
@@ -160,6 +168,7 @@ export function renderPlanReport(plan: DeploymentPlan): string {
     '',
     ...envSection(plan),
     ...secretsNote(plan),
+    ...plainValuesNote(plan),
     '',
     ...domainsSection(plan),
     ...unsupportedSection(plan),

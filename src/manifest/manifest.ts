@@ -78,6 +78,80 @@ const OpenBaoSecrets = Schema.Struct({
 
 const EnvironmentSecrets = Schema.Union([InfisicalSecrets, OpenBaoSecrets])
 
+const secretLikeParts = [
+  'ACCESSKEY',
+  'APIKEY',
+  'CREDENTIAL',
+  'PASSPHRASE',
+  'PASSWD',
+  'PASSWORD',
+  'PRIVATEKEY',
+  'SECRET',
+  'TOKEN',
+]
+
+const secretLikeWords: ReadonlySet<string> = new Set([
+  'KEY',
+  'KEYS',
+  'PASS',
+  'PRIVATE',
+  'PWD',
+  'SALT',
+])
+
+export function isSecretLikeKey(key: string): boolean {
+  const upper = key.toUpperCase()
+  const words = key
+    .replaceAll(/([a-z0-9])([A-Z])/gu, '$1_$2')
+    .toUpperCase()
+    .split(/[^A-Z]+/u)
+  return (
+    secretLikeParts.some((part) => upper.includes(part)) ||
+    words.some((word) => secretLikeWords.has(word))
+  )
+}
+
+const credentialInValue = [
+  /:\/\/[^/@\s]*:[^@\s]*@/u,
+  /^[^\s/@:]+:[^\s/@]+@/u,
+  /[?&;](?:password|pass|pwd|secret|token|sslpassword)=/iu,
+]
+
+const PlainValue = Schema.String.check(
+  Schema.isPattern(new RegExp(`^${openBaoLiteral}*$`, 'u'), {
+    message:
+      'a plain value holds no quote, backtick, `$`, backslash or control character',
+  }),
+)
+  .annotate({
+    description:
+      'A non-secret value, written as it is: no quote, backtick, `$`, backslash or control character (the action also refuses a URL holding a password). Quote numbers and booleans in YAML.',
+  })
+  .check(
+    Schema.makeFilter(
+      (value) => !credentialInValue.some((pattern) => pattern.test(value)),
+      {
+        message:
+          'a plain value holds no credential (`scheme://user:password@…`, `user:password@host`, `?password=…`): map it from a secrets provider instead',
+      },
+    ),
+  )
+
+const PlainEnv = Schema.Record(EnvKey, PlainValue)
+  .check(Schema.isMinProperties(1))
+  .annotate({
+    description:
+      'Plain, non-secret environment values (URLs, names, settings), written into the Dokploy env as they are. The action refuses a key that looks like a secret (KEY, TOKEN, SECRET, PASSWORD…).',
+  })
+  .check(
+    Schema.makeFilter((env) => {
+      const secretLike = Object.keys(env).filter(isSecretLikeKey)
+      return secretLike.length === 0
+        ? true
+        : `environment key(s) ${secretLike.join(', ')} look like secrets (KEY, TOKEN, SECRET, PASSWORD…): map them from a secrets provider, never as a plain value`
+    }),
+  )
+
 const SecretsFolder = Schema.String.check(
   Schema.isPattern(/^(?:\/[A-Za-z0-9_-]+)+$/u, {
     message:
@@ -175,6 +249,7 @@ const ManifestEnvironment = Schema.Struct({
     compose: DokployName,
   }),
   secrets: Schema.optionalKey(EnvironmentSecrets),
+  env: Schema.optionalKey(PlainEnv),
   domain: ParentDomain,
 })
 
@@ -183,7 +258,7 @@ export const Manifest = Schema.Struct({
   composeFile: RelativePath.annotate({
     default: defaultComposePath,
     description:
-      'Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys.',
+      'Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys or plain values (`env`).',
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultComposePath))),
   secrets: Schema.optionalKey(Schema.Struct({ folder: SecretsFolder })),
   environments: Schema.Record(EnvironmentName, ManifestEnvironment).check(

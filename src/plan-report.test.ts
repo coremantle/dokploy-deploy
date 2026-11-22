@@ -223,6 +223,33 @@ describe('renderPlanReport', () => {
     )
   })
 
+  it('should name the plain values the manifest writes', () => {
+    // Given: a plan with two plain values
+    const plan: DeploymentPlan = {
+      ...basePlan,
+      plainKeys: ['APP_ENVIRONMENT', 'PUBLIC_APP_URL'],
+    }
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: the keys are named, never as secrets
+    expect(report).toContain(
+      "Plain values, written as the manifest's `env` gives them (not secrets): `APP_ENVIRONMENT`, `PUBLIC_APP_URL`.",
+    )
+  })
+
+  it('should not mention plain values when the manifest has none', () => {
+    // Given: a plan without plain values
+    const plan = basePlan
+
+    // When: rendering the report
+    const report = renderPlanReport(plan)
+
+    // Then: no plain value line is printed
+    expect(report).not.toContain('Plain values')
+  })
+
   it('should warn about references the provider listing could not show', () => {
     // Given: references left unverified by a truncated listing
     const plan: DeploymentPlan = {

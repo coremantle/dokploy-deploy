@@ -431,6 +431,187 @@ describe('Manifest OpenBao secrets', () => {
   )
 })
 
+function withPlainValue(value: string) {
+  return templateManifest.replace(
+    '    domain: template.example.com',
+    `    env:\n      PUBLIC_APP_URL: ${JSON.stringify(value)}\n    domain: template.example.com`,
+  )
+}
+
+function withPlainKey(key: string) {
+  return templateManifest.replace(
+    '    domain: template.example.com',
+    `    env:\n      ${key}: some-value\n    domain: template.example.com`,
+  )
+}
+
+describe('Manifest plain values', () => {
+  effect('should decode plain values next to OpenBao secrets', () =>
+    Effect.gen(function* () {
+      // Given: an OpenBao environment with plain, non-secret values
+      const yaml = openBaoManifest.replace(
+        '    domain: template.example.com',
+        [
+          '    env:',
+          '      APP_ENVIRONMENT: production',
+          '      ADMINISTRATOR_EMAILS: a@example.com,b@example.com',
+          "      PUBLIC_API_URL: 'https://api.example.com'",
+          '    domain: template.example.com',
+        ].join('\n'),
+      )
+
+      // When: decoding it
+      const manifest = yield* decode(yaml)
+
+      // Then: the values are kept as written
+      expect(manifest.environments['production']?.env).toEqual({
+        APP_ENVIRONMENT: 'production',
+        ADMINISTRATOR_EMAILS: 'a@example.com,b@example.com',
+        PUBLIC_API_URL: 'https://api.example.com',
+      })
+    }),
+  )
+
+  for (const value of [
+    'production',
+    '',
+    'https://app.example.com/path?query=1&other=2',
+    'https://0123456789abcdef@errors.example.com/3',
+    'noreply@example.com',
+    'Example App <noreply@example.com>',
+  ]) {
+    effect(`should accept the plain value ${JSON.stringify(value)}`, () =>
+      Effect.gen(function* () {
+        // Given: a URL, a name, an address or an empty value
+        const yaml = withPlainValue(value)
+
+        // When: decoding it
+        const exit = yield* decodeExit(yaml)
+
+        // Then: it is accepted
+        expect(Exit.isSuccess(exit)).toBe(true)
+      }),
+    )
+  }
+
+  for (const value of [
+    "it's",
+    'say "hi"',
+    'a `command`',
+    '$HOME',
+    '${{vault.other-prod.prod/a:b}}',
+    'ends with \\',
+    'two\nlines',
+    'postgres://app:hunter2@db:5432/app',
+    'postgres://app:hun/ter2@db:5432/app',
+    'default:s3cr3t@redis:6379',
+    'postgres://db:5432/app?user=app&password=hunter2',
+    'https://example.com/hook?token=abc',
+  ]) {
+    effect(`should refuse the plain value ${JSON.stringify(value)}`, () =>
+      Effect.gen(function* () {
+        // Given: a character the env block cannot carry, a reference, or a credential
+        const yaml = withPlainValue(value)
+
+        // When: decoding it
+        const exit = yield* decodeExit(yaml)
+
+        // Then: it is refused
+        expect(Exit.isFailure(exit)).toBe(true)
+      }),
+    )
+  }
+
+  effect('should refuse a number instead of a quoted string', () =>
+    Effect.gen(function* () {
+      // Given: an unquoted YAML number
+      const yaml = templateManifest.replace(
+        '    domain: template.example.com',
+        '    env:\n      PORT: 4000\n    domain: template.example.com',
+      )
+
+      // When: decoding it
+      const exit = yield* decodeExit(yaml)
+
+      // Then: it is refused: YAML would not keep its formatting
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+
+  for (const key of [
+    'RESEND_API_KEY',
+    'OAUTH_TOKEN_ENCRYPTION_KEYS_RETIRED',
+    'GLITCHTIP_AUTH_TOKEN',
+    'POSTGRES_PASSWORD',
+    'DISCORD_CLIENT_SECRET',
+    'api-key',
+    'PRIVATE.PEM',
+    'SMTP_PASS',
+    'dbPassword',
+    'apiToken',
+    'S3_SECRETKEY',
+    'CLIENTSECRET',
+    'AWS_ACCESSKEY_ID',
+    'TOKEN2',
+    'KEY1',
+  ]) {
+    effect(`should refuse the secret-looking key ${key}`, () =>
+      Effect.gen(function* () {
+        // Given: a plain value under a key that names a secret
+        const yaml = withPlainKey(key)
+
+        // When: decoding it
+        const error = yield* Effect.flip(decode(yaml))
+
+        // Then: the key is named in the refusal
+        expect(error.message).toContain(key)
+        expect(error.message).toContain('look like secrets')
+      }),
+    )
+  }
+
+  for (const key of [
+    'ADMINISTRATOR_EMAILS',
+    'COOKIE_DOMAIN',
+    'API_SENTRY_DSN',
+    'BACKOFFICE_GLITCHTIP_PROJECT',
+    'OTEL_EXPORTER_OTLP_ENDPOINT',
+    'MONKEY_NAME',
+    'PASSENGER_COUNT',
+    'BYPASS_CACHE',
+    'publicKeyboardLayout',
+  ]) {
+    effect(`should accept the setting key ${key}`, () =>
+      Effect.gen(function* () {
+        // Given: a plain value under a settings key
+        const yaml = withPlainKey(key)
+
+        // When: decoding it
+        const exit = yield* decodeExit(yaml)
+
+        // Then: it is accepted
+        expect(Exit.isSuccess(exit)).toBe(true)
+      }),
+    )
+  }
+
+  effect('should refuse an empty env block', () =>
+    Effect.gen(function* () {
+      // Given: an env block without any key
+      const yaml = templateManifest.replace(
+        '    domain: template.example.com',
+        '    env: {}\n    domain: template.example.com',
+      )
+
+      // When: decoding it
+      const exit = yield* decodeExit(yaml)
+
+      // Then: it is refused
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+})
+
 describe('manifestJsonSchema', () => {
   it('should publish a closed JSON Schema with the required keys', () => {
     // Given: the manifest schema

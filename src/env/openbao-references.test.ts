@@ -14,6 +14,7 @@ import {
   referencesOf,
   renderOpenBaoEnvironment,
 } from '#env/openbao-references.ts'
+import { PlainValueCollisionError } from '#env/plain-values.ts'
 
 const octantSecrets = {
   openbao: {
@@ -309,6 +310,59 @@ describe('checkListedReferences', () => {
         'octant-prod:prod/postgres:password',
         'octant-prod:prod/resend:api_key',
       ])
+    }),
+  )
+})
+
+describe('renderOpenBaoEnvironment with plain values', () => {
+  effect('should sort the plain lines among the references', () =>
+    Effect.gen(function* () {
+      // Given: the entries of the environment and two plain values
+      const entries = yield* openBaoEntries(octantSecrets)
+      const plain = [
+        { key: 'APP_ENVIRONMENT', value: 'production' },
+        { key: 'PUBLIC_APP_URL', value: 'https://app.example.com' },
+      ]
+
+      // When: rendering the block with a version
+      const env = yield* renderOpenBaoEnvironment({
+        entries,
+        plain,
+        version: Option.some({ key: 'APP_VERSION', value: '0123456789ab' }),
+      })
+
+      // Then: every key is sorted, the plain values written as they are, the version last
+      expect(env).toBe(
+        [
+          "APP_ENVIRONMENT='production'",
+          "DATABASE_URL='postgres://${{vault.octant-prod.prod/postgres:username}}:${{vault.octant-prod.prod/postgres:password}}@octant-db:5432/octant'",
+          "DISCORD_CLIENT_ID='${{vault.shared-prod.prod/oauth-discord:client_id}}'",
+          "POSTGRES_PASSWORD='${{vault.octant-prod.prod/postgres:password}}'",
+          "PUBLIC_APP_URL='https://app.example.com'",
+          'APP_VERSION=0123456789ab',
+          '',
+        ].join('\n'),
+      )
+    }),
+  )
+
+  effect('should refuse a plain value the mapping also holds', () =>
+    Effect.gen(function* () {
+      // Given: a plain value named like a mapped key
+      const entries = yield* openBaoEntries(octantSecrets)
+
+      // When: rendering the block
+      const error = yield* Effect.flip(
+        renderOpenBaoEnvironment({
+          entries,
+          plain: [{ key: 'DISCORD_CLIENT_ID', value: 'public-id' }],
+        }),
+      )
+
+      // Then: the key is named once, as a collision
+      expect(error).toEqual(
+        PlainValueCollisionError.forSecretKeys(['DISCORD_CLIENT_ID']),
+      )
     }),
   )
 })

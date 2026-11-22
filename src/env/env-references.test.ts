@@ -15,6 +15,7 @@ import {
   renderEnvironment,
   resolveVersion,
 } from '#env/env-references.ts'
+import { PlainValueCollisionError } from '#env/plain-values.ts'
 
 const demoSource = { provider: 'infisical-demo', folder: '/demo/hello' }
 
@@ -371,6 +372,46 @@ describe('renderEnvironment with a version', () => {
       expect(error).toEqual(
         VersionKeyCollisionError.forKey({ ...demoSource, key: 'APP_VERSION' }),
       )
+    }),
+  )
+})
+
+describe('renderEnvironment with plain values', () => {
+  effect('should sort the plain lines among the references', () =>
+    Effect.gen(function* () {
+      // Given: the folder's keys and a plain value
+      const plain = [{ key: 'APP_ENVIRONMENT', value: 'production' }]
+
+      // When: rendering the block
+      const env = yield* renderEnvironment({
+        ...demoSource,
+        plain,
+        keys: ['MESSAGE'],
+      })
+
+      // Then: both lines are sorted, the plain value written as it is
+      expect(env).toBe(
+        [
+          "APP_ENVIRONMENT='production'",
+          "MESSAGE='${{vault.infisical-demo./demo/hello:MESSAGE}}'",
+          '',
+        ].join('\n'),
+      )
+    }),
+  )
+
+  effect('should refuse a plain value the folder also lists', () =>
+    Effect.gen(function* () {
+      // Given: a folder already holding the plain key
+      const plain = [{ key: 'MESSAGE', value: 'hello' }]
+
+      // When: rendering the block
+      const error = yield* Effect.flip(
+        renderEnvironment({ ...demoSource, plain, keys: ['MESSAGE'] }),
+      )
+
+      // Then: the action fails instead of writing the key twice
+      expect(error).toEqual(PlainValueCollisionError.forSecretKeys(['MESSAGE']))
     }),
   )
 })
