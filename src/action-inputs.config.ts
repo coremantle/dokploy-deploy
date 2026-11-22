@@ -29,6 +29,8 @@ export const inputVariables = {
   openbaoUrl: 'DOKPLOY_DEPLOY_OPENBAO_URL',
   openbaoToken: 'DOKPLOY_DEPLOY_OPENBAO_TOKEN',
   outputFile: 'GITHUB_OUTPUT',
+  githubActions: 'GITHUB_ACTIONS',
+  forgejoActions: 'FORGEJO_ACTIONS',
 } as const
 
 export const defaultDeployTimeoutSeconds = 1800
@@ -108,6 +110,20 @@ const PullRequestNumber = Schema.NumberFromString.check(
 
 const Blank = Schema.Trim.check(Schema.isMaxLength(0))
 
+function runnerFlag(name: string): Config.Config<boolean> {
+  return Config.schema(Schema.String, name).pipe(
+    Config.withDefault(''),
+    Config.map((value) => value.trim() === 'true'),
+  )
+}
+
+function onRunner(): Config.Config<boolean> {
+  return Config.all([
+    runnerFlag(inputVariables.githubActions),
+    runnerFlag(inputVariables.forgejoActions),
+  ]).pipe(Config.map(([github, forgejo]) => github || forgejo))
+}
+
 function optionalInput<A>({
   schema,
   name,
@@ -164,6 +180,7 @@ export interface ActionInputsShape {
   readonly versionEnv: Option.Option<string>
   readonly openbao: Option.Option<OpenBaoAccess>
   readonly outputFile: Option.Option<string>
+  readonly onRunner: boolean
 }
 
 export class ActionInputs extends Context.Service<
@@ -216,6 +233,7 @@ export class ActionInputs extends Context.Service<
         schema: OutputFile,
         name: inputVariables.outputFile,
       }),
+      onRunner: onRunner(),
       forge: Config.all({
         apiUrl: optionalInput({
           schema: Schema.URLFromString,
@@ -253,6 +271,7 @@ export class ActionInputs extends Context.Service<
       versionEnv: Option.none(),
       openbao: Option.none(),
       outputFile: Option.none(),
+      onRunner: true,
       ...shape,
     })
 

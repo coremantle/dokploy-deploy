@@ -1,5 +1,13 @@
 import { describe, effect, expect, it } from '@effect/vitest'
-import { Effect, FileSystem, Layer, Option, PlatformError } from 'effect'
+import {
+  Console,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  PlatformError,
+  Redacted,
+} from 'effect'
 
 import { ActionInputs } from '#action-inputs.config.ts'
 import {
@@ -18,15 +26,17 @@ interface WrittenFile {
 function commandsWriting({
   outputFile,
   fail = false,
+  onRunner = true,
 }: {
   readonly outputFile: Option.Option<string>
   readonly fail?: boolean
+  readonly onRunner?: boolean
 }) {
   const written: Array<WrittenFile> = []
   const layer = WorkflowCommands.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        ActionInputs.buildTestLayer({ outputFile }),
+        ActionInputs.buildTestLayer({ outputFile, onRunner }),
         FileSystem.layerNoop({
           writeFileString: (...[path, data, options]) =>
             fail
@@ -73,6 +83,70 @@ describe('outputLines', () => {
     // Then: the runner reads three outputs
     expect(lines).toBe('status=done\nsha=\nnote=a b\n')
   })
+})
+
+function capturingConsole() {
+  const lines: Array<string> = []
+  function record(...args: ReadonlyArray<unknown>) {
+    lines.push(args.map(String).join(' '))
+  }
+  const capture: Console.Console = {
+    ...console,
+    log: record,
+    info: record,
+    warn: record,
+    error: record,
+    debug: record,
+  }
+  return { lines, capture }
+}
+
+describe('WorkflowCommands.mask', () => {
+  effect('should ask the runner to mask the value on a runner', () =>
+    Effect.gen(function* () {
+      // Given: a run on a GitHub or Forgejo runner
+      const onRunner = true
+      const { layer } = commandsWriting({ onRunner, outputFile: Option.none() })
+
+      // When: masking a secret
+      const { lines, capture } = capturingConsole()
+      yield* WorkflowCommands.pipe(
+        Effect.flatMap((commands) =>
+          commands.mask(Redacted.make('a-secret%value')),
+        ),
+        Effect.provide(layer),
+        Effect.provideService(Console.Console, capture),
+      )
+
+      // Then: the runner reads one add-mask command holding the escaped value
+      expect(lines).toEqual(['::add-mask::a-secret%25value'])
+    }),
+  )
+
+  effect('should only warn, without the secret, outside a runner', () =>
+    Effect.gen(function* () {
+      // Given: a local run, where nothing would hide the value
+      const onRunner = false
+      const { layer } = commandsWriting({ onRunner, outputFile: Option.none() })
+
+      // When: masking a secret
+      const { lines, capture } = capturingConsole()
+      yield* WorkflowCommands.pipe(
+        Effect.flatMap((commands) =>
+          commands.mask(Redacted.make('a-secret%value')),
+        ),
+        Effect.provide(layer),
+        Effect.provideService(Console.Console, capture),
+      )
+
+      // Then: a warning says the run is unmasked, and the secret never reaches the terminal
+      expect(lines.join('\n')).not.toContain('a-secret')
+      expect(lines.join('\n')).not.toContain('::add-mask::')
+      expect(lines.join('\n')).toContain(
+        'WorkflowCommands does not mask the secret outside a runner',
+      )
+    }),
+  )
 })
 
 describe('WorkflowCommands.setOutputs', () => {
