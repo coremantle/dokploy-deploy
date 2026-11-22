@@ -34440,7 +34440,9 @@ var inputVariables = {
   versionEnv: "DOKPLOY_DEPLOY_VERSION_ENV",
   openbaoUrl: "DOKPLOY_DEPLOY_OPENBAO_URL",
   openbaoToken: "DOKPLOY_DEPLOY_OPENBAO_TOKEN",
-  outputFile: "GITHUB_OUTPUT"
+  outputFile: "GITHUB_OUTPUT",
+  githubActions: "GITHUB_ACTIONS",
+  forgejoActions: "FORGEJO_ACTIONS"
 };
 var defaultDeployTimeoutSeconds = 1800;
 var testCommit = "0123456789abcdef0123456789abcdef01234567";
@@ -34502,6 +34504,18 @@ var PullRequestNumber = Schema_exports.NumberFromString.check(
   Schema_exports.isGreaterThan(0)
 );
 var Blank = Schema_exports.Trim.check(Schema_exports.isMaxLength(0));
+function runnerFlag(name) {
+  return Config_exports.schema(Schema_exports.String, name).pipe(
+    Config_exports.withDefault(""),
+    Config_exports.map((value5) => value5.trim() === "true")
+  );
+}
+function onRunner() {
+  return Config_exports.all([
+    runnerFlag(inputVariables.githubActions),
+    runnerFlag(inputVariables.forgejoActions)
+  ]).pipe(Config_exports.map(([github, forgejo]) => github || forgejo));
+}
 function optionalInput({
   schema: schema2,
   name
@@ -34573,6 +34587,7 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
         schema: OutputFile,
         name: inputVariables.outputFile
       }),
+      onRunner: onRunner(),
       forge: Config_exports.all({
         apiUrl: optionalInput({
           schema: Schema_exports.URLFromString,
@@ -34608,6 +34623,7 @@ var ActionInputs = class _ActionInputs extends Context_exports.Service()("dokplo
     versionEnv: Option_exports.none(),
     openbao: Option_exports.none(),
     outputFile: Option_exports.none(),
+    onRunner: true,
     ...shape
   });
   static testLayer = Layer_exports.succeed(
@@ -38619,8 +38635,7 @@ var ConsoleWorkflowCommands = class _ConsoleWorkflowCommands {
   }
   mask(secret) {
     return pipe(
-      // Why: a workflow command is runner protocol on stdout, not a log line — it must reach the runner verbatim, before anything could print the value.
-      Console_exports.log(`::add-mask::${escapeCommandData(Redacted_exports.value(secret))}`),
+      this.dependencies.onRunner ? this.addMask(secret) : this.skipMask(),
       Effect_exports.withSpan("WorkflowCommands.mask")
     );
   }
@@ -38634,6 +38649,22 @@ var ConsoleWorkflowCommands = class _ConsoleWorkflowCommands {
         onSome: (path) => this.appendOutputs({ path, outputs })
       }),
       Effect_exports.withSpan("WorkflowCommands.setOutputs")
+    );
+  }
+  addMask(secret) {
+    return pipe(
+      // Why: a workflow command is runner protocol on stdout, not a log line — it must reach the runner verbatim, before anything could print the value.
+      Console_exports.log(`::add-mask::${escapeCommandData(Redacted_exports.value(secret))}`),
+      Effect_exports.withSpan("WorkflowCommands.addMask")
+    );
+  }
+  skipMask() {
+    return pipe(
+      // Why: outside a runner nothing reads the command and hides the value — printing it would write the secret itself to the terminal.
+      effect_log_exports.warning(
+        "WorkflowCommands does not mask the secret outside a runner"
+      ),
+      Effect_exports.withSpan("WorkflowCommands.skipMask")
     );
   }
   appendOutputs({
@@ -38661,7 +38692,8 @@ var WorkflowCommands = class _WorkflowCommands extends Context_exports.Service()
       }),
       ({ fileSystem, inputs }) => ConsoleWorkflowCommands.make({
         fileSystem,
-        outputFile: inputs.outputFile
+        outputFile: inputs.outputFile,
+        onRunner: inputs.onRunner
       })
     )
   );

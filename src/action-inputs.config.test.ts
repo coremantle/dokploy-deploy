@@ -375,6 +375,57 @@ describe('ActionInputs of the deploy', () => {
     }),
   )
 
+  effect('should not take a local run for a runner', () =>
+    Effect.gen(function* () {
+      // Given: a local run, without the variables a runner sets
+      const environment = validInputs
+
+      // When: reading the inputs
+      const inputs = yield* ActionInputs.pipe(
+        Effect.provide(layerWithEnvironment(environment)),
+      )
+
+      // Then: the run is not on a runner
+      expect(inputs.onRunner).toBe(false)
+    }),
+  )
+
+  effect('should recognise a GitHub or a Forgejo runner', () =>
+    Effect.gen(function* () {
+      // Given: the variable each kind of runner sets
+      const github = { ...validInputs, [inputVariables.githubActions]: 'true' }
+      const forgejo = {
+        ...validInputs,
+        [inputVariables.forgejoActions]: 'true',
+      }
+      const both = {
+        ...validInputs,
+        [inputVariables.githubActions]: 'false',
+        [inputVariables.forgejoActions]: ' true ',
+      }
+      const neither = {
+        ...validInputs,
+        [inputVariables.githubActions]: 'false',
+        [inputVariables.forgejoActions]: 'false',
+      }
+
+      // When: reading the inputs of each run
+      const runs = yield* Effect.all(
+        [github, forgejo, both, neither].map((environment) =>
+          ActionInputs.pipe(Effect.provide(layerWithEnvironment(environment))),
+        ),
+      )
+
+      // Then: either variable set to true marks a runner, and only that
+      expect(runs.map(({ onRunner }) => onRunner)).toEqual([
+        true,
+        true,
+        true,
+        false,
+      ])
+    }),
+  )
+
   effect('should decode the deploy inputs the composite step passes', () =>
     Effect.gen(function* () {
       // Given: a run on a forge with every deploy input set

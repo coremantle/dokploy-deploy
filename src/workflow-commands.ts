@@ -43,6 +43,7 @@ export interface WorkflowCommandsShape {
 interface WorkflowCommandsDependencies {
   readonly fileSystem: FileSystem.FileSystem
   readonly outputFile: Option.Option<string>
+  readonly onRunner: boolean
 }
 
 export function escapeCommandData(value: string): string {
@@ -73,8 +74,7 @@ class ConsoleWorkflowCommands implements WorkflowCommandsShape {
 
   mask(secret: Redacted.Redacted<string>) {
     return pipe(
-      // Why: a workflow command is runner protocol on stdout, not a log line — it must reach the runner verbatim, before anything could print the value.
-      Console.log(`::add-mask::${escapeCommandData(Redacted.value(secret))}`),
+      this.dependencies.onRunner ? this.addMask(secret) : this.skipMask(),
       Effect.withSpan('WorkflowCommands.mask'),
     )
   }
@@ -90,6 +90,24 @@ class ConsoleWorkflowCommands implements WorkflowCommandsShape {
         onSome: (path) => this.appendOutputs({ path, outputs }),
       }),
       Effect.withSpan('WorkflowCommands.setOutputs'),
+    )
+  }
+
+  private addMask(secret: Redacted.Redacted<string>) {
+    return pipe(
+      // Why: a workflow command is runner protocol on stdout, not a log line — it must reach the runner verbatim, before anything could print the value.
+      Console.log(`::add-mask::${escapeCommandData(Redacted.value(secret))}`),
+      Effect.withSpan('WorkflowCommands.addMask'),
+    )
+  }
+
+  private skipMask() {
+    return pipe(
+      // Why: outside a runner nothing reads the command and hides the value — printing it would write the secret itself to the terminal.
+      EffectLog.warning(
+        'WorkflowCommands does not mask the secret outside a runner',
+      ),
+      Effect.withSpan('WorkflowCommands.skipMask'),
     )
   }
 
@@ -127,6 +145,7 @@ export class WorkflowCommands extends Context.Service<
         ConsoleWorkflowCommands.make({
           fileSystem,
           outputFile: inputs.outputFile,
+          onRunner: inputs.onRunner,
         }),
     ),
   )

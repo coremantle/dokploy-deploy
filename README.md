@@ -547,11 +547,18 @@ commit check then decides, as it compares what was actually deployed.
 - **The key is project-scoped.** It belongs to a Dokploy _member_ whose access
   is limited to the application's project, environments and services. Dokploy
   itself refuses the key anywhere else; the action never needs an admin key.
+- **Masking is runner protocol, so only on a runner.** The action masks its
+  secrets with `::add-mask::` lines, which the runner reads and hides; it
+  prints them only when `GITHUB_ACTIONS` or `FORGEJO_ACTIONS` is `true`. A
+  local run prints no mask line (it would write the secret itself to the
+  terminal) and so hides nothing: run it locally only with a throwaway or
+  project-scoped key, never an admin key.
 - **The CI never holds a secret value.** The environment it writes into
   Dokploy is made of references (`${{vault…}}`) that Dokploy resolves at
   deploy time — plus, with `version-env`, one line holding the deployed
-  commit, which is not a secret; the key and the forge token are the only
-  secrets the job sees, and the action masks both in the log before doing anything else. The
+  commit, which is not a secret; the key, the forge token and the optional
+  OpenBao token are the only secrets the job sees, and on a runner the action
+  masks them in the job log before doing anything else. The
   env it reads back from Dokploy may hold values: only its key names are
   logged or commented.
 - **Reference guard — accident protection, not a barrier.** The action only
@@ -617,7 +624,8 @@ writes nothing else, against `.github/smoke/fake-dokploy.mjs`: a fake Dokploy
 over https with a throwaway certificate, which answers the reads, keeps the
 writes in memory and runs a deployment in two seconds (its last argument is
 the commit it records). The same
-works locally (switch `DOKPLOY_DEPLOY_MODE` to `apply`):
+works locally (switch `DOKPLOY_DEPLOY_MODE` to `apply`; a local run prints no
+`::add-mask::` line, see "Threat model"):
 
 ```sh
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
