@@ -1,5 +1,8 @@
 import { Array, Effect, Option, Order, Schema, pipe } from 'effect'
 
+import type { EnvLine, PlainEntry } from '#env/plain-values.ts'
+import { checkPlainKeys, plainLine, sortedBlock } from '#env/plain-values.ts'
+
 const dotenvKey = /^[A-Za-z0-9_.-]+$/u
 
 const sharedFolder = '/shared'
@@ -174,17 +177,19 @@ function referenceLine({
   provider,
   folder,
   key,
-}: ReferenceSource & { readonly key: string }) {
-  return `${key}='\${{vault.${provider}.${folder}:${key}}}'`
+}: ReferenceSource & { readonly key: string }): EnvLine {
+  return { key, line: `${key}='\${{vault.${provider}.${folder}:${key}}}'\n` }
 }
 
 export function renderEnvironment({
   keys,
   version = Option.none(),
+  plain = [],
   ...source
 }: ReferenceSource & {
   readonly keys: ReadonlyArray<string>
   readonly version?: Option.Option<AppVersion>
+  readonly plain?: ReadonlyArray<PlainEntry>
 }) {
   const sortedKeys = pipe(keys, Array.dedupe, Array.sort(Order.String))
   const invalidKeys = Array.filter(sortedKeys, (key) => !dotenvKey.test(key))
@@ -207,12 +212,15 @@ export function renderEnvironment({
           Effect.fail(VersionKeyCollisionError.forKey({ ...source, key })),
       }),
     ),
+    Effect.tap((validKeys) =>
+      checkPlainKeys({ plain, version, secretKeys: validKeys }),
+    ),
     Effect.map((validKeys) =>
       [
-        ...Array.map(
-          validKeys,
-          (key) => `${referenceLine({ ...source, key })}\n`,
-        ),
+        sortedBlock([
+          ...Array.map(validKeys, (key) => referenceLine({ ...source, key })),
+          ...Array.map(plain, plainLine),
+        ]),
         ...Option.toArray(Option.map(version, versionLine)),
       ].join(''),
     ),

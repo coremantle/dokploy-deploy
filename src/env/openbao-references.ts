@@ -2,6 +2,8 @@ import { Array, Effect, Option, Order, Record, Schema, pipe } from 'effect'
 
 import type { AppVersion } from '#env/env-references.ts'
 import { dokploySlug, versionLine } from '#env/env-references.ts'
+import type { EnvLine, PlainEntry } from '#env/plain-values.ts'
+import { checkPlainKeys, plainLine, sortedBlock } from '#env/plain-values.ts'
 import type { OpenBaoSecrets } from '#manifest/manifest.ts'
 import { openBaoReference } from '#manifest/manifest.ts'
 
@@ -265,21 +267,23 @@ function vaultReference({ provider, path, field }: OpenBaoReference): string {
   return `\${{vault.${provider}.${path}:${field}}}`
 }
 
-function entryLine({ key, provider, parts }: OpenBaoEntry): string {
+function entryLine({ key, provider, parts }: OpenBaoEntry): EnvLine {
   const value = Array.map(parts, (part) =>
     part.kind === 'literal'
       ? part.text
       : vaultReference({ provider, path: part.path, field: part.field }),
   ).join('')
-  return `${key}='${value}'\n`
+  return { key, line: `${key}='${value}'\n` }
 }
 
 export function renderOpenBaoEnvironment({
   entries,
   version = Option.none(),
+  plain = [],
 }: {
   readonly entries: ReadonlyArray<OpenBaoEntry>
   readonly version?: Option.Option<AppVersion>
+  readonly plain?: ReadonlyArray<PlainEntry>
 }) {
   const collision = Option.filter(version, ({ key }) =>
     Array.some(entries, (entry) => entry.key === key),
@@ -293,14 +297,24 @@ export function renderOpenBaoEnvironment({
   )
   return pipe(
     checked,
+    Effect.andThen(
+      checkPlainKeys({
+        plain,
+        version,
+        secretKeys: Array.map(entries, ({ key }) => key),
+      }),
+    ),
     Effect.map(() =>
       [
-        ...Array.map(entries, entryLine),
+        sortedBlock([
+          ...Array.map(entries, entryLine),
+          ...Array.map(plain, plainLine),
+        ]),
         ...Option.toArray(Option.map(version, versionLine)),
       ].join(''),
     ),
     Effect.withSpan('OpenBaoReferences.renderEnvironment', {
-      attributes: { keys: entries.length },
+      attributes: { keys: entries.length, plain: plain.length },
     }),
   )
 }

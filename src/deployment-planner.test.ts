@@ -28,6 +28,7 @@ import {
   MountGuardError,
   VersionKeyMappedError,
 } from '#env/openbao-references.ts'
+import { PlainValueCollisionError } from '#env/plain-values.ts'
 import type { Manifest, ManifestEnvironment } from '#manifest/manifest.ts'
 import type { SecretState } from '#openbao/openbao-metadata.ts'
 import { OpenBaoMetadata } from '#openbao/openbao-metadata.ts'
@@ -939,6 +940,98 @@ describe('DeploymentPlanner with OpenBao secrets', () => {
 
       // Then: the collision is reported
       expect(error).toEqual(VersionKeyMappedError.forKey('MESSAGE'))
+    }),
+  )
+})
+
+describe('DeploymentPlanner with plain values', () => {
+  effect('should write the plain values among the OpenBao references', () =>
+    Effect.gen(function* () {
+      // Given: an OpenBao environment whose MESSAGE moved to a plain value
+      const manifest: Manifest = {
+        ...openBaoManifest,
+        environments: {
+          production: {
+            ...openBaoEnvironment,
+            secrets: {
+              openbao: {
+                'shared-prod': { NPM_TOKEN: 'prod/npm-registry:token' },
+              },
+            },
+            env: { MESSAGE: 'hello', APP_ENVIRONMENT: 'production' },
+          },
+        },
+      }
+      const { layer } = openBaoPlannerIn({ manifest })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: the plain values satisfy the compose and are written as they are
+      expect(plan.env).toBe(
+        [
+          "APP_ENVIRONMENT='production'",
+          "MESSAGE='hello'",
+          "NPM_TOKEN='${{vault.shared-prod.prod/npm-registry:token}}'",
+          '',
+        ].join('\n'),
+      )
+      expect(plan.keys).toEqual(['NPM_TOKEN', 'APP_ENVIRONMENT', 'MESSAGE'])
+      expect(plan.plainKeys).toEqual(['APP_ENVIRONMENT', 'MESSAGE'])
+    }),
+  )
+
+  effect('should write the plain values among the Infisical references', () =>
+    Effect.gen(function* () {
+      // Given: an Infisical environment with a plain value
+      const manifest: Manifest = {
+        ...demoManifest,
+        environments: {
+          production: {
+            dokploy: {
+              project: 'Demo',
+              environment: 'production',
+              compose: 'hello',
+            },
+            env: { APP_ENVIRONMENT: 'production' },
+            domain: 'demo.example.com',
+          },
+        },
+      }
+      const { layer } = plannerIn({ manifest, keys: ['MESSAGE'] })
+
+      // When: planning
+      const plan = yield* planWith(layer)
+
+      // Then: the folder's key and the plain value are both written, sorted
+      expect(plan.env).toBe(
+        [
+          "APP_ENVIRONMENT='production'",
+          "MESSAGE='${{vault.infisical-demo./demo/hello:MESSAGE}}'",
+          '',
+        ].join('\n'),
+      )
+      expect(plan.plainKeys).toEqual(['APP_ENVIRONMENT'])
+    }),
+  )
+
+  effect('should report a key that is both plain and mapped', () =>
+    Effect.gen(function* () {
+      // Given: MESSAGE both mapped from OpenBao and given as a plain value
+      const manifest: Manifest = {
+        ...openBaoManifest,
+        environments: {
+          production: { ...openBaoEnvironment, env: { MESSAGE: 'hello' } },
+        },
+      }
+      const { layer, queries } = openBaoPlannerIn({ manifest })
+
+      // When: planning
+      const error = yield* Effect.flip(planWith(layer))
+
+      // Then: the collision is named before any provider is listed
+      expect(error).toEqual(PlainValueCollisionError.forSecretKeys(['MESSAGE']))
+      expect(queries).toEqual([])
     }),
   )
 })

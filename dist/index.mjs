@@ -34315,6 +34315,57 @@ var OpenBaoSecrets = Schema_exports.Struct({
   })
 });
 var EnvironmentSecrets = Schema_exports.Union([InfisicalSecrets, OpenBaoSecrets]);
+var secretLikeParts = [
+  "ACCESSKEY",
+  "APIKEY",
+  "CREDENTIAL",
+  "PASSPHRASE",
+  "PASSWD",
+  "PASSWORD",
+  "PRIVATEKEY",
+  "SECRET",
+  "TOKEN"
+];
+var secretLikeWords = /* @__PURE__ */ new Set([
+  "KEY",
+  "KEYS",
+  "PASS",
+  "PRIVATE",
+  "PWD",
+  "SALT"
+]);
+function isSecretLikeKey(key5) {
+  const upper = key5.toUpperCase();
+  const words = key5.replaceAll(/([a-z0-9])([A-Z])/gu, "$1_$2").toUpperCase().split(/[^A-Z]+/u);
+  return secretLikeParts.some((part) => upper.includes(part)) || words.some((word) => secretLikeWords.has(word));
+}
+var credentialInValue = [
+  /:\/\/[^/@\s]*:[^@\s]*@/u,
+  /^[^\s/@:]+:[^\s/@]+@/u,
+  /[?&;](?:password|pass|pwd|secret|token|sslpassword)=/iu
+];
+var PlainValue = Schema_exports.String.check(
+  Schema_exports.isPattern(new RegExp(`^${openBaoLiteral}*$`, "u"), {
+    message: "a plain value holds no quote, backtick, `$`, backslash or control character"
+  })
+).annotate({
+  description: "A non-secret value, written as it is: no quote, backtick, `$`, backslash or control character (the action also refuses a URL holding a password). Quote numbers and booleans in YAML."
+}).check(
+  Schema_exports.makeFilter(
+    (value5) => !credentialInValue.some((pattern) => pattern.test(value5)),
+    {
+      message: "a plain value holds no credential (`scheme://user:password@\u2026`, `user:password@host`, `?password=\u2026`): map it from a secrets provider instead"
+    }
+  )
+);
+var PlainEnv = Schema_exports.Record(EnvKey, PlainValue).check(Schema_exports.isMinProperties(1)).annotate({
+  description: "Plain, non-secret environment values (URLs, names, settings), written into the Dokploy env as they are. The action refuses a key that looks like a secret (KEY, TOKEN, SECRET, PASSWORD\u2026)."
+}).check(
+  Schema_exports.makeFilter((env) => {
+    const secretLike = Object.keys(env).filter(isSecretLikeKey);
+    return secretLike.length === 0 ? true : `environment key(s) ${secretLike.join(", ")} look like secrets (KEY, TOKEN, SECRET, PASSWORD\u2026): map them from a secrets provider, never as a plain value`;
+  })
+);
 var SecretsFolder = Schema_exports.String.check(
   Schema_exports.isPattern(/^(?:\/[A-Za-z0-9_-]+)+$/u, {
     message: "a secrets folder is an absolute Infisical path such as /my-project, made of letters, digits, dashes and underscores"
@@ -34392,13 +34443,14 @@ var ManifestEnvironment = Schema_exports.Struct({
     compose: DokployName
   }),
   secrets: Schema_exports.optionalKey(EnvironmentSecrets),
+  env: Schema_exports.optionalKey(PlainEnv),
   domain: ParentDomain
 });
 var Manifest = Schema_exports.Struct({
   version: Schema_exports.Literal(1),
   composeFile: RelativePath.annotate({
     default: defaultComposePath,
-    description: "Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys."
+    description: "Compose file, relative to the workspace, whose `${VAR}` without a default must all be secret keys or plain values (`env`)."
   }).pipe(Schema_exports.withDecodingDefaultKey(Effect_exports.succeed(defaultComposePath))),
   secrets: Schema_exports.optionalKey(Schema_exports.Struct({ folder: SecretsFolder })),
   environments: Schema_exports.Record(EnvironmentName, ManifestEnvironment).check(
@@ -36124,6 +36176,70 @@ function findOpenBaoProvider({
   );
 }
 
+// src/env/plain-values.ts
+var PlainValueCollisionError = class _PlainValueCollisionError extends Schema_exports.TaggedError()(
+  "PlainValueCollisionError",
+  { keys: Schema_exports.Array(Schema_exports.String), message: Schema_exports.String }
+) {
+  static forSecretKeys(keys3) {
+    return new _PlainValueCollisionError({
+      keys: keys3,
+      message: `environment key(s) ${keys3.join(", ")} are both a plain value (\`env\`) and a secret key of the environment: keep each key in one place`
+    });
+  }
+  static forVersionKey(key5) {
+    return new _PlainValueCollisionError({
+      keys: [key5],
+      message: `version-env ${key5} is also a plain value (\`env\`) of the environment: the action writes ${key5} itself, so remove it from \`env\` or pick another version-env`
+    });
+  }
+};
+function plainEntries({
+  env
+}) {
+  return pipe(
+    Record_exports.toEntries(env ?? {}),
+    Array_exports.map(([key5, value5]) => ({ key: key5, value: value5 })),
+    Array_exports.sort(Order_exports.mapInput(Order_exports.String, ({ key: key5 }) => key5))
+  );
+}
+function plainLine({ key: key5, value: value5 }) {
+  return { key: key5, line: `${key5}='${value5}'
+` };
+}
+function checkPlainKeys({
+  plain,
+  secretKeys,
+  version
+}) {
+  const plainKeys = Array_exports.map(plain, ({ key: key5 }) => key5);
+  const shared = Array_exports.intersection(plainKeys, secretKeys);
+  const versionKey = Option_exports.filter(
+    version,
+    ({ key: key5 }) => Array_exports.contains(plainKeys, key5)
+  );
+  return pipe(
+    Array_exports.isReadonlyArrayNonEmpty(shared) ? Effect_exports.fail(
+      PlainValueCollisionError.forSecretKeys(
+        Array_exports.sort(shared, Order_exports.String)
+      )
+    ) : Option_exports.match(versionKey, {
+      onNone: () => Effect_exports.void,
+      onSome: ({ key: key5 }) => Effect_exports.fail(PlainValueCollisionError.forVersionKey(key5))
+    }),
+    Effect_exports.withSpan("PlainValues.checkKeys", {
+      attributes: { plain: plain.length }
+    })
+  );
+}
+function sortedBlock(lines) {
+  return pipe(
+    lines,
+    Array_exports.sort(Order_exports.mapInput(Order_exports.String, ({ key: key5 }) => key5)),
+    Array_exports.map(({ line }) => line)
+  ).join("");
+}
+
 // src/env/env-references.ts
 var dotenvKey = /^[A-Za-z0-9_.-]+$/u;
 var sharedFolder = "/shared";
@@ -36253,11 +36369,13 @@ function referenceLine({
   folder,
   key: key5
 }) {
-  return `${key5}='\${{vault.${provider}.${folder}:${key5}}}'`;
+  return { key: key5, line: `${key5}='\${{vault.${provider}.${folder}:${key5}}}'
+` };
 }
 function renderEnvironment({
   keys: keys3,
   version = Option_exports.none(),
+  plain = [],
   ...source
 }) {
   const sortedKeys2 = pipe(keys3, Array_exports.dedupe, Array_exports.sort(Order_exports.String));
@@ -36282,13 +36400,15 @@ function renderEnvironment({
         onSome: ({ key: key5 }) => Effect_exports.fail(VersionKeyCollisionError.forKey({ ...source, key: key5 }))
       })
     ),
+    Effect_exports.tap(
+      (validKeys) => checkPlainKeys({ plain, version, secretKeys: validKeys })
+    ),
     Effect_exports.map(
       (validKeys) => [
-        ...Array_exports.map(
-          validKeys,
-          (key5) => `${referenceLine({ ...source, key: key5 })}
-`
-        ),
+        sortedBlock([
+          ...Array_exports.map(validKeys, (key5) => referenceLine({ ...source, key: key5 })),
+          ...Array_exports.map(plain, plainLine)
+        ]),
         ...Option_exports.toArray(Option_exports.map(version, versionLine))
       ].join("")
     ),
@@ -36596,12 +36716,13 @@ function entryLine({ key: key5, provider, parts: parts2 }) {
     parts2,
     (part) => part.kind === "literal" ? part.text : vaultReference({ provider, path: part.path, field: part.field })
   ).join("");
-  return `${key5}='${value5}'
-`;
+  return { key: key5, line: `${key5}='${value5}'
+` };
 }
 function renderOpenBaoEnvironment({
   entries: entries3,
-  version = Option_exports.none()
+  version = Option_exports.none(),
+  plain = []
 }) {
   const collision = Option_exports.filter(
     version,
@@ -36616,14 +36737,24 @@ function renderOpenBaoEnvironment({
   );
   return pipe(
     checked,
+    Effect_exports.andThen(
+      checkPlainKeys({
+        plain,
+        version,
+        secretKeys: Array_exports.map(entries3, ({ key: key5 }) => key5)
+      })
+    ),
     Effect_exports.map(
       () => [
-        ...Array_exports.map(entries3, entryLine),
+        sortedBlock([
+          ...Array_exports.map(entries3, entryLine),
+          ...Array_exports.map(plain, plainLine)
+        ]),
         ...Option_exports.toArray(Option_exports.map(version, versionLine))
       ].join("")
     ),
     Effect_exports.withSpan("OpenBaoReferences.renderEnvironment", {
-      attributes: { keys: entries3.length }
+      attributes: { keys: entries3.length, plain: plain.length }
     })
   );
 }
@@ -37846,19 +37977,23 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
   renderInfisical({
     source,
     target,
-    version
+    version,
+    environment
   }) {
+    const plain = plainEntries(environment);
+    const plainKeys = Array_exports.map(plain, ({ key: key5 }) => key5);
     return pipe(
       this.listKeys({ source, target }),
       Effect_exports.flatMap(
         (keys3) => Effect_exports.all({
           keys: Effect_exports.succeed(keys3),
-          env: renderEnvironment({ ...source, keys: keys3, version })
+          env: renderEnvironment({ ...source, keys: keys3, version, plain })
         })
       ),
       Effect_exports.map(({ keys: keys3, env }) => ({
-        keys: keys3,
         env,
+        plainKeys,
+        keys: [...keys3, ...plainKeys],
         secrets: {
           kind: "infisical",
           provider: source.provider,
@@ -37870,23 +38005,38 @@ var ManifestDeploymentPlanner = class _ManifestDeploymentPlanner {
     );
   }
   renderOpenBao(context3) {
+    const plain = plainEntries(context3.environment);
+    const plainKeys = Array_exports.map(plain, ({ key: key5 }) => key5);
     return pipe(
       openBaoEntries(context3.secrets),
+      // Why: a plain key the mapping also holds is a manifest mistake — refuse it before calling Dokploy.
+      Effect_exports.tap(
+        (entries3) => checkPlainKeys({
+          plain,
+          version: context3.version,
+          secretKeys: Array_exports.map(entries3, ({ key: key5 }) => key5)
+        })
+      ),
       Effect_exports.flatMap(
         (entries3) => Effect_exports.all({
           entries: Effect_exports.succeed(entries3),
           checked: this.checkOpenBao({ ...context3, entries: entries3 }),
-          env: renderOpenBaoEnvironment({ entries: entries3, version: context3.version })
+          env: renderOpenBaoEnvironment({
+            entries: entries3,
+            plain,
+            version: context3.version
+          })
         })
       ),
       Effect_exports.map(({ entries: entries3, checked, env }) => ({
         env,
+        plainKeys,
         secrets: {
           kind: "openbao",
           providers: checked.providers,
           metadataChecked: this.dependencies.openbao.enabled
         },
-        keys: Array_exports.map(entries3, ({ key: key5 }) => key5),
+        keys: [...Array_exports.map(entries3, ({ key: key5 }) => key5), ...plainKeys],
         unverifiedReferences: checked.unverified
       })),
       Effect_exports.withSpan("DeploymentPlanner.renderOpenBao")
@@ -38112,6 +38262,7 @@ var DeploymentPlanner = class _DeploymentPlanner extends Context_exports.Service
       secrets: { kind: "infisical", provider: "demo-prod", folder: "/demo" },
       unverifiedReferences: [],
       keys: ["MESSAGE"],
+      plainKeys: [],
       env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
       version: Option_exports.none(),
       domains: [],
@@ -38224,6 +38375,13 @@ function secretsNote({ secrets }) {
   const checked = secrets.metadataChecked ? "every path was also checked live in OpenBao metadata" : "no `openbao-token`, so OpenBao metadata was not checked";
   return ["", `Secrets: OpenBao references through ${providers}; ${checked}.`];
 }
+function plainValuesNote({ plainKeys }) {
+  if (plainKeys.length === 0) return [];
+  return [
+    "",
+    `Plain values, written as the manifest's \`env\` gives them (not secrets): ${Array_exports.map(plainKeys, cell).join(", ")}.`
+  ];
+}
 function unverifiedReferencesSection({
   unverifiedReferences,
   secrets
@@ -38259,6 +38417,7 @@ function renderPlanReport(plan) {
     "",
     ...envSection(plan),
     ...secretsNote(plan),
+    ...plainValuesNote(plan),
     "",
     ...domainsSection(plan),
     ...unsupportedSection(plan),
@@ -38726,7 +38885,8 @@ function planAnnotations(plan) {
     compose: plan.dokploy.compose,
     composeId: plan.dokploy.composeId,
     ...secretsAnnotations(plan),
-    keys: plan.keys.length
+    keys: plan.keys.length,
+    plainKeys: plan.plainKeys.length
   };
 }
 function stepOutputs(report) {

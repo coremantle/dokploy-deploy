@@ -180,7 +180,7 @@ jobs:
       - name: The second apply with version-env wrote nothing
         run: test "$(grep -c '^POST /api/compose.saveEnvironment' "$RUNNER_TEMP/fake-dokploy.log")" = 2
 
-      # Why: the OpenBao form of `secrets:` renders the manifest's explicit mapping, a composed value included, after listing the provider's path:field names through Dokploy.
+      # Why: the OpenBao form of `secrets:` renders the manifest's explicit mapping, a composed value included, after listing the provider's path:field names through Dokploy; a plain `env` value is written as it is.
       - name: Apply the OpenBao form
         uses: ./
         env:
@@ -200,3 +200,4 @@ jobs:
           grep -qx 'listSecretNames| provider-smoke-prod' "$RUNNER_TEMP/fake-dokploy.log"
           grep -qxF "env| GREETING='${d}{{vault.smoke-prod.prod/hello:greeting}}'" "$RUNNER_TEMP/fake-dokploy.log"
           grep -qxF "env| MESSAGE='from ${d}{{vault.smoke-prod.prod/hello:host}}: ${d}{{vault.smoke-prod.prod/hello:message}}'" "$RUNNER_TEMP/fake-dokploy.log"
+          grep -qxF "env| LOG_LEVEL='debug'" "$RUNNER_TEMP/fake-dokploy.log"

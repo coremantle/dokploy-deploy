@@ -79,6 +79,8 @@ import {
   referencesOf,
   renderOpenBaoEnvironment,
 } from '#env/openbao-references.ts'
+import type { PlainValueCollisionError } from '#env/plain-values.ts'
+import { checkPlainKeys, plainEntries } from '#env/plain-values.ts'
 import type {
   Manifest,
   ManifestEnvironment,
@@ -165,6 +167,7 @@ export interface DeploymentPlan {
   readonly secrets: SecretsPlan
   readonly unverifiedReferences: ReadonlyArray<string>
   readonly keys: ReadonlyArray<string>
+  readonly plainKeys: ReadonlyArray<string>
   readonly env: string
   readonly version: Option.Option<AppVersion>
   readonly domains: ReadonlyArray<DesiredDomain>
@@ -198,6 +201,7 @@ export type DeploymentPlanError =
   | VersionKeyMappedError
   | OpenBaoRequestError
   | OpenBaoSecretStateError
+  | PlainValueCollisionError
 
 export interface DeploymentPlannerShape {
   readonly plan: Effect.Effect<DeploymentPlan, DeploymentPlanError>
@@ -334,6 +338,7 @@ function resolveOpenBaoProvider({
 interface RenderedSecrets {
   readonly secrets: SecretsPlan
   readonly keys: ReadonlyArray<string>
+  readonly plainKeys: ReadonlyArray<string>
   readonly env: string
   readonly unverifiedReferences: ReadonlyArray<string>
 }
@@ -454,20 +459,24 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
     source,
     target,
     version,
+    environment,
   }: ResolvedEnvironment & {
     readonly source: { readonly provider: string; readonly folder: string }
   }) {
+    const plain = plainEntries(environment)
+    const plainKeys = Array.map(plain, ({ key }) => key)
     return pipe(
       this.listKeys({ source, target }),
       Effect.flatMap((keys) =>
         Effect.all({
           keys: Effect.succeed(keys),
-          env: renderEnvironment({ ...source, keys, version }),
+          env: renderEnvironment({ ...source, keys, version, plain }),
         }),
       ),
       Effect.map(({ keys, env }): RenderedSecrets => ({
-        keys,
         env,
+        plainKeys,
+        keys: [...keys, ...plainKeys],
         secrets: {
           kind: 'infisical',
           provider: source.provider,
@@ -482,23 +491,38 @@ class ManifestDeploymentPlanner implements DeploymentPlannerShape {
   private renderOpenBao(
     context: ResolvedEnvironment & { readonly secrets: OpenBaoSecrets },
   ) {
+    const plain = plainEntries(context.environment)
+    const plainKeys = Array.map(plain, ({ key }) => key)
     return pipe(
       openBaoEntries(context.secrets),
+      // Why: a plain key the mapping also holds is a manifest mistake — refuse it before calling Dokploy.
+      Effect.tap((entries) =>
+        checkPlainKeys({
+          plain,
+          version: context.version,
+          secretKeys: Array.map(entries, ({ key }) => key),
+        }),
+      ),
       Effect.flatMap((entries) =>
         Effect.all({
           entries: Effect.succeed(entries),
           checked: this.checkOpenBao({ ...context, entries }),
-          env: renderOpenBaoEnvironment({ entries, version: context.version }),
+          env: renderOpenBaoEnvironment({
+            entries,
+            plain,
+            version: context.version,
+          }),
         }),
       ),
       Effect.map(({ entries, checked, env }): RenderedSecrets => ({
         env,
+        plainKeys,
         secrets: {
           kind: 'openbao',
           providers: checked.providers,
           metadataChecked: this.dependencies.openbao.enabled,
         },
-        keys: Array.map(entries, ({ key }) => key),
+        keys: [...Array.map(entries, ({ key }) => key), ...plainKeys],
         unverifiedReferences: checked.unverified,
       })),
       Effect.withSpan('DeploymentPlanner.renderOpenBao'),
@@ -761,6 +785,7 @@ export class DeploymentPlanner extends Context.Service<
         secrets: { kind: 'infisical', provider: 'demo-prod', folder: '/demo' },
         unverifiedReferences: [],
         keys: ['MESSAGE'],
+        plainKeys: [],
         env: "MESSAGE='${{vault.demo-prod./demo:MESSAGE}}'\n",
         version: Option.none(),
         domains: [],

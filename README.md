@@ -108,7 +108,8 @@ only logs a warning: the step's result is the deployment's.
 ### The plan comment
 
 `plan` on a `pull_request` event comments its report on the pull request: the
-environment keys added, changed or removed, the version line when
+environment keys added, changed or removed, the [plain values](#plain-values-env)
+it writes, the version line when
 [`version-env`](#the-deployed-commit-version-env) is set, the domains created,
 updated or deleted, and the warnings (a Traefik router host the manifest does not
 declare, see [Restricting HTTP methods](#restricting-http-methods)). One
@@ -161,12 +162,13 @@ domains:
 | Field                                  | Required | Default                      | Meaning                                                                                                                                                                      |
 | -------------------------------------- | -------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `version`                              | yes      | —                            | Always `1`.                                                                                                                                                                  |
-| `composeFile`                          | no       | `docker-compose.dokploy.yml` | Compose file, relative to the workspace: its services must hold the domains, and its `${VAR}` without a default must all be secret keys.                                     |
+| `composeFile`                          | no       | `docker-compose.dokploy.yml` | Compose file, relative to the workspace: its services must hold the domains, and its `${VAR}` without a default must all be secret keys or plain values (`env`).             |
 | `secrets.folder`                       | see →    | —                            | Infisical folder the references point to: `/<project>`, a folder under it, or `/shared` (see the reference guard). Required unless every environment sets `secrets.openbao`. |
 | `environments.<name>`                  | yes, ≥ 1 | —                            | One entry per environment; `<name>` is what the `environment` input selects.                                                                                                 |
 | `environments.<name>.dokploy`          | yes      | —                            | `project`, `environment` and `compose` **names**, resolved to ids through the API.                                                                                           |
 | `environments.<name>.secrets.provider` | no       | see below                    | Dokploy vault provider that reads `secrets.folder` for this environment.                                                                                                     |
 | `environments.<name>.secrets.openbao`  | no       | —                            | Reads OpenBao instead of Infisical: providers and the explicit env mapping, see [OpenBao secrets](#openbao-secrets-secretsopenbao). Excludes `secrets.provider`.             |
+| `environments.<name>.env`              | no       | —                            | Plain, non-secret values written into the env as they are, see [Plain values](#plain-values-env).                                                                            |
 | `environments.<name>.domain`           | yes      | —                            | Parent domain: every host is `<subdomain>.<domain>`.                                                                                                                         |
 | `domains[]`                            | yes, ≥ 1 | —                            | Shared by every environment.                                                                                                                                                 |
 | `domains[].service`                    | yes      | —                            | Compose service the domain routes to.                                                                                                                                        |
@@ -220,8 +222,8 @@ environments:
   `${<path>:<field>}`, e.g. a connection URL around a password. Its literal
   parts are written as they are, so they cannot hold a quote (`'`, `"`, a
   backtick), a `$` outside a reference, a backslash or a control character.
-  A value without any reference is refused: non-secret settings belong in the
-  compose file.
+  A value without any reference is refused: non-secret settings are
+  [plain values](#plain-values-env) (`env`).
 - **Several providers**: each environment key belongs to exactly one
   provider; a key mapped twice is refused. A composed value reads one
   provider only.
@@ -279,6 +281,67 @@ step that produced nothing): check the comment's line. A current version
 whose deletion is only scheduled (`delete_version_after`, a future
 `deletion_time`) counts as live.
 
+### Plain values (`env`)
+
+Settings that are not secrets — public URLs, a cookie domain, a sender
+address, an environment name, a Sentry DSN — differ per environment but have
+no business in a secrets manager. An environment lists them under `env`, next
+to its secrets (OpenBao or Infisical), and `apply` writes each one into the
+compose's env as it is:
+
+```yaml
+environments:
+  production:
+    dokploy:
+      project: my-app
+      environment: production
+      compose: my-app
+    secrets:
+      openbao:
+        my-app-prod:
+          POSTGRES_PASSWORD: prod/postgres:password
+    env:
+      APP_ENVIRONMENT: production
+      PUBLIC_API_URL: https://api.my-app.example.com
+      ADMINISTRATOR_EMAILS: admin@example.com
+    domain: my-app.example.com
+```
+
+- **Line written**: `KEY='<value>'`, sorted with the secret references, the
+  [version line](#the-deployed-commit-version-env) last. A changed value
+  shows as a changed key in the diff and the plan comment, like any other.
+- **Values are reviewed text**: they live in git, are printed in the job log
+  and named in the plan comment. A value is a YAML string (quote numbers and
+  booleans, YAML would not keep their formatting), without a quote (`'`, `"`,
+  a backtick), a `$`, a backslash or a control character — the env block is
+  single-quoted and Dokploy reads `$` as the start of a reference — and
+  without a credential: a URL with a password (`scheme://user:password@…`,
+  `user:password@host`) or a `password`, `pass`, `pwd`, `secret`, `token` or
+  `sslpassword` query parameter.
+- **Never a secret**: a key is refused when it contains `SECRET`, `TOKEN`,
+  `PASSWORD`, `PASSWD`, `PASSPHRASE`, `CREDENTIAL`, `APIKEY`, `ACCESSKEY` or
+  `PRIVATEKEY` anywhere (`CLIENTSECRET`, `apiToken`, `TOKENS`), or holds the
+  word `KEY`, `KEYS`, `PASS`, `PWD`, `PRIVATE` or `SALT` (words split on `_`,
+  `.`, `-`, digits and camelCase; any case: `SMTP_PASS`, `KEY1`). The check is
+  a safety net for a copy-paste, not a classifier: a value that must stay
+  private belongs in the secrets provider whatever its key's name. The
+  published JSON Schema does not carry the key and credential checks: the
+  action applies them when it decodes the manifest.
+- **One place per key**: a key both under `env` and mapped from OpenBao (or
+  listed in the Infisical folder) fails the plan, as does a key equal to
+  `version-env`. Moving an environment back to an Infisical folder that still
+  holds a key now under `env` therefore means dropping that `env` entry too.
+- **Next to secrets, not instead**: `env` adds keys to an environment's
+  secrets; an OpenBao provider still maps at least one key, and an Infisical
+  folder must still list one.
+- **Compose check**: a plain key counts as a key of the environment, so a
+  `${VAR}` of the compose without a default may be one.
+
+Moving a setting out of the secrets provider is one manifest change: drop its
+mapping, add it under `env` with the same value. The diff reports the key as
+changed (a reference became a value) and the next deploy reads it from the
+env, so the services see the same value.
+
 ### What `plan` checks and renders
 
 1. The manifest decodes and declares the requested `environment`.
@@ -299,14 +362,16 @@ whose deletion is only scheduled (`delete_version_after`, a future
    metadata is checked too.
 7. **Compose check**: every `${VAR}` of `composeFile` without a default
    (`$VAR`, `${VAR}`, `${VAR:?…}`, `${VAR?…}`) is one of those keys (OpenBao:
-   a key of the environment's mapping) — a
+   a key of the environment's mapping) or a plain value (`env`) — a
    reference to a missing key fails the Dokploy deploy. The
    [`version-env`](#the-deployed-commit-version-env) variable, when set,
    counts as one of them.
 8. The environment block is rendered, one line per key, sorted:
    `KEY='${{vault.<provider>.<folder>:KEY}}'` (OpenBao: the mapped value,
    each reference written `${{vault.<provider>.<path>:<field>}}`). Key names
-   are limited to letters, digits, `_`, `.` and `-`. With
+   are limited to letters, digits, `_`, `.` and `-`. The
+   [plain values](#plain-values-env) are sorted among them,
+   `KEY='<value>'`. With
    [`version-env`](#the-deployed-commit-version-env), one more line follows
    them: `<name>=<short sha>`.
 9. **Diff**: the block is compared with the compose's current env
@@ -318,7 +383,8 @@ whose deletion is only scheduled (`delete_version_after`, a future
     a domain host of the manifest — see
     [Restricting HTTP methods](#restricting-http-methods).
 
-The block only holds references, never a value, so `plan` prints it. It is
+The block only holds references and non-secret plain values, never a secret
+value, so `plan` prints it. It is
 always single-quoted: Dokploy substitutes the value before parsing the block,
 so a secret whose value holds a `'` or ends with a `\` would be altered —
 keep such characters out of secrets read by references. The action never sees
@@ -555,8 +621,9 @@ commit check then decides, as it compares what was actually deployed.
   project-scoped key, never an admin key.
 - **The CI never holds a secret value.** The environment it writes into
   Dokploy is made of references (`${{vault…}}`) that Dokploy resolves at
-  deploy time — plus, with `version-env`, one line holding the deployed
-  commit, which is not a secret; the key, the forge token and the optional
+  deploy time — plus the manifest's [plain values](#plain-values-env), reviewed
+  in git and refused under a secret-looking key, and, with `version-env`, one
+  line holding the deployed commit, which is not a secret; the key, the forge token and the optional
   OpenBao token are the only secrets the job sees, and on a runner the action
   masks them in the job log before doing anything else. The
   env it reads back from Dokploy may hold values: only its key names are

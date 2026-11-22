@@ -1,4 +1,4 @@
-# OpenBao form of the smoke manifest: the same compose, its env mapped explicitly to OpenBao references.
+# OpenBao form of the smoke manifest: the same compose, its env mapped explicitly to OpenBao references, plus a plain value.
 version: 1
 composeFile: .github/smoke/docker-compose.dokploy.yml
 
@@ -13,6 +13,8 @@ environments:
         smoke-prod:
           GREETING: prod/hello:greeting
           MESSAGE: 'from ${prod/hello:host}: ${prod/hello:message}'
+    env:
+      LOG_LEVEL: debug
     domain: smoke.example.com
 
 domains:
