@@ -1,5 +1,6 @@
 import { describe, effect, expect, it } from '@effect/vitest'
 import {
+  Console,
   Effect,
   FileSystem,
   Layer,
@@ -7,7 +8,6 @@ import {
   PlatformError,
   Redacted,
 } from 'effect'
-import { TestConsole } from 'effect/testing'
 
 import { ActionInputs } from '#action-inputs.config.ts'
 import {
@@ -85,6 +85,22 @@ describe('outputLines', () => {
   })
 })
 
+function capturingConsole() {
+  const lines: Array<string> = []
+  function record(...args: ReadonlyArray<unknown>) {
+    lines.push(args.map(String).join(' '))
+  }
+  const capture: Console.Console = {
+    ...console,
+    log: record,
+    info: record,
+    warn: record,
+    error: record,
+    debug: record,
+  }
+  return { lines, capture }
+}
+
 describe('WorkflowCommands.mask', () => {
   effect('should ask the runner to mask the value on a runner', () =>
     Effect.gen(function* () {
@@ -93,12 +109,13 @@ describe('WorkflowCommands.mask', () => {
       const { layer } = commandsWriting({ onRunner, outputFile: Option.none() })
 
       // When: masking a secret
-      const lines = yield* WorkflowCommands.pipe(
+      const { lines, capture } = capturingConsole()
+      yield* WorkflowCommands.pipe(
         Effect.flatMap((commands) =>
           commands.mask(Redacted.make('a-secret%value')),
         ),
-        Effect.andThen(() => TestConsole.logLines),
-        Effect.provide(Layer.merge(layer, TestConsole.layer)),
+        Effect.provide(layer),
+        Effect.provideService(Console.Console, capture),
       )
 
       // Then: the runner reads one add-mask command holding the escaped value
@@ -113,18 +130,19 @@ describe('WorkflowCommands.mask', () => {
       const { layer } = commandsWriting({ onRunner, outputFile: Option.none() })
 
       // When: masking a secret
-      const lines = yield* WorkflowCommands.pipe(
+      const { lines, capture } = capturingConsole()
+      yield* WorkflowCommands.pipe(
         Effect.flatMap((commands) =>
           commands.mask(Redacted.make('a-secret%value')),
         ),
-        Effect.andThen(() => TestConsole.logLines),
-        Effect.provide(Layer.merge(layer, TestConsole.layer)),
+        Effect.provide(layer),
+        Effect.provideService(Console.Console, capture),
       )
 
       // Then: a warning says the run is unmasked, and the secret never reaches the terminal
-      expect(lines.map(String).join('\n')).not.toContain('a-secret')
-      expect(lines.map(String).join('\n')).not.toContain('::add-mask::')
-      expect(lines).toContain(
+      expect(lines.join('\n')).not.toContain('a-secret')
+      expect(lines.join('\n')).not.toContain('::add-mask::')
+      expect(lines.join('\n')).toContain(
         'WorkflowCommands does not mask the secret outside a runner',
       )
     }),
